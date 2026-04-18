@@ -34,3 +34,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# playwright / dev screenshots (preview only, not source)
+/.playwright-mcp/
+/landing-desktop.png
+/landing-mobile.png
+/setup-placeholder-desktop.png
