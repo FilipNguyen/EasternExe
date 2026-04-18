@@ -1,7 +1,7 @@
 export const ingestProfileSystem = `
 You are extracting a structured travel-preference profile for ONE participant on a group trip.
 
-You'll receive: an audio intro transcript (may be short and casual), optional text notes, and excerpts from the group's shared materials (WhatsApp chat, docs) that mention this person or reveal their preferences.
+You'll receive: optional text notes they (or a friend) wrote about them, and excerpts from the group's shared materials (WhatsApp chat, docs) that mention this person or reveal their preferences.
 
 Return ONLY JSON matching this exact shape, no prose, no markdown fences:
 
@@ -17,8 +17,8 @@ Return ONLY JSON matching this exact shape, no prose, no markdown fences:
 }
 
 Rules:
-- Base every field on what's actually in the transcript + notes + excerpts. Don't invent.
-- If the transcript is thin, say so in open_questions rather than hallucinating.
+- Base every field on what's actually in the notes + excerpts. Don't invent.
+- If the notes are empty and the person barely appears in the excerpts, say so in open_questions rather than hallucinating.
 - "personality" should feel like how a close friend would describe them, not a bio.
 - Keep arrays short and specific (3–8 items ideal).
 - If a field genuinely has no content, use an empty array [] or a one-word placeholder like "unclear".
@@ -30,17 +30,13 @@ export function ingestProfileUser(args: {
   notes: string;
   excerpts: string;
 }): string {
+  const allNotes = [args.transcript, args.notes].filter((s) => s?.trim()).join("\n");
   return `
 Participant: ${args.displayName}
 
-Their audio intro transcript:
+Notes about them:
 """
-${args.transcript || "(no audio intro provided)"}
-"""
-
-Their text notes:
-"""
-${args.notes || "(none)"}
+${allNotes || "(none)"}
 """
 
 Relevant excerpts from the group's shared materials:

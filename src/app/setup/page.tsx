@@ -71,7 +71,7 @@ function reducer(state: SetupState, action: Action): SetupState {
   }
 }
 
-const STEP_LABELS = ["Basics", "People", "Files", "Intros", "Review"] as const;
+const STEP_LABELS = ["Basics", "People", "Files", "Notes", "Review"] as const;
 
 export default function SetupPage() {
   const router = useRouter();
@@ -169,7 +169,10 @@ export default function SetupPage() {
       }
 
       // Upload files
-      const total = state.files.length + Object.values(state.intros).filter((i) => i?.blob).length;
+      const notesCount = Object.values(state.intros).filter((i) =>
+        i?.notes?.trim()
+      ).length;
+      const total = state.files.length + notesCount;
       let done = 0;
       const bump = (label: string) => {
         done += 1;
@@ -198,62 +201,45 @@ export default function SetupPage() {
         bump(`Uploaded ${f.file.name}`);
       }
 
-      // Upload audio intros + text notes
+      // Upload per-participant notes (as text files, ingestion reads them
+      // back alongside shared materials)
       for (const p of cleanParticipants) {
         const intro = state.intros[p.tempId];
-        if (!intro) continue;
+        if (!intro?.notes?.trim()) continue;
         const participantId = tempIdToId[p.tempId];
-
-        if (intro.blob) {
-          const path = `${trip.id}/${participantId}-intro.webm`;
-          const { error: upErr } = await supabase.storage
-            .from("trip-uploads")
-            .upload(path, intro.blob, {
-              upsert: true,
-              contentType: "audio/webm",
-            });
-          if (upErr)
-            throw new Error(`Intro upload failed for ${p.display_name}: ${upErr.message}`);
-          const registerRes = await fetch("/api/uploads", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              trip_id: trip.id,
-              participant_id: participantId,
-              kind: "audio_intro",
-              storage_path: path,
-              filename: `${p.display_name} intro.webm`,
-            }),
+        const noteBlob = new Blob([intro.notes.trim()], {
+          type: "text/plain",
+        });
+        const path = `${trip.id}/${participantId}-notes.txt`;
+        const { error: upErr } = await supabase.storage
+          .from("trip-uploads")
+          .upload(path, noteBlob, {
+            upsert: true,
+            contentType: "text/plain",
           });
-          if (!registerRes.ok) throw new Error("Failed to register intro upload");
-          bump(`Uploaded ${p.display_name}'s intro`);
+        if (upErr) {
+          throw new Error(
+            `Notes upload failed for ${p.display_name}: ${upErr.message}`
+          );
         }
-
-        if (intro.notes?.trim()) {
-          const noteBlob = new Blob([intro.notes.trim()], { type: "text/plain" });
-          const path = `${trip.id}/${participantId}-notes.txt`;
-          const { error: upErr } = await supabase.storage
-            .from("trip-uploads")
-            .upload(path, noteBlob, { upsert: true, contentType: "text/plain" });
-          if (upErr)
-            throw new Error(`Notes upload failed for ${p.display_name}: ${upErr.message}`);
-          await fetch("/api/uploads", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              trip_id: trip.id,
-              participant_id: participantId,
-              kind: "other",
-              storage_path: path,
-              filename: `${p.display_name} notes.txt`,
-            }),
-          });
-        }
+        const registerRes = await fetch("/api/uploads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            trip_id: trip.id,
+            participant_id: participantId,
+            kind: "other",
+            storage_path: path,
+            filename: `${p.display_name} notes.txt`,
+          }),
+        });
+        if (!registerRes.ok) throw new Error("Failed to register notes");
+        bump(`Saved ${p.display_name}'s notes`);
       }
 
       setSubmitMessage("Starting ingestion…");
-      // Fire-and-forget: the server pipeline awaits LLM + Whisper + Places
-      // calls, which take 30–120s. We don't block the UI.
+      // Fire-and-forget: the server pipeline awaits many LLM + Places calls,
+      // which take 30–120s. We don't block the UI.
       void fetch(`/api/ingest/${trip.id}`, {
         method: "POST",
         keepalive: true,

@@ -4,8 +4,7 @@ import type OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
-import { embedBatch } from "@/lib/openai";
-import { cosineSimilarity } from "@/lib/embeddings";
+import { cosineSimilarity, embedBatch } from "@/lib/embeddings";
 import { googlePlacesTextSearch } from "@/lib/places";
 import { braveSearch, isBraveAvailable } from "@/lib/brave";
 import type {

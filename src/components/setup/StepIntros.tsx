@@ -2,12 +2,10 @@
 
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { AudioRecorder } from "@/components/setup/AudioRecorder";
 
 import type { ParticipantDraft } from "@/components/setup/StepParticipants";
 
 export interface IntroDraft {
-  blob: Blob | null;
   notes: string;
 }
 
@@ -18,14 +16,10 @@ interface Props {
 }
 
 export function StepIntros({ participants, intros, onChange }: Props) {
-  const update = (tempId: string, patch: Partial<IntroDraft>) => {
+  const update = (tempId: string, notes: string) => {
     onChange({
       ...intros,
-      [tempId]: {
-        blob: intros[tempId]?.blob ?? null,
-        notes: intros[tempId]?.notes ?? "",
-        ...patch,
-      },
+      [tempId]: { notes },
     });
   };
 
@@ -33,18 +27,18 @@ export function StepIntros({ participants, intros, onChange }: Props) {
     <div className="mx-auto w-full max-w-xl space-y-8">
       <header>
         <h2 className="text-2xl font-semibold tracking-tight">
-          Audio intros
+          About each person
         </h2>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          Each person records a short 30-second intro — what you like, what
-          you&apos;re excited about. Totally optional, but quality suffers
-          without it.
+          A few sentences per person — what they&apos;re into, what they
+          don&apos;t want. These feed their profile directly. Skipping means
+          the AI knows them only from the shared materials.
         </p>
       </header>
 
       <div className="space-y-4">
         {participants.map((p) => {
-          const draft = intros[p.tempId] ?? { blob: null, notes: "" };
+          const draft = intros[p.tempId] ?? { notes: "" };
           return (
             <div
               key={p.tempId}
@@ -63,30 +57,26 @@ export function StepIntros({ participants, intros, onChange }: Props) {
                     {p.display_name || "Unnamed"}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {draft.blob ? "Intro saved" : "No intro yet"}
+                    {draft.notes.trim()
+                      ? `${draft.notes.trim().length} chars`
+                      : "No notes yet"}
                   </div>
                 </div>
               </div>
-
-              <AudioRecorder
-                existing={draft.blob}
-                onSave={(b) => update(p.tempId, { blob: b })}
-                onClear={() => update(p.tempId, { blob: null })}
-              />
 
               <div className="space-y-1.5">
                 <Label
                   htmlFor={`notes-${p.tempId}`}
                   className="text-xs text-muted-foreground"
                 >
-                  Notes (optional)
+                  Notes
                 </Label>
                 <Textarea
                   id={`notes-${p.tempId}`}
-                  placeholder="Anything else the AI should know…"
+                  placeholder="e.g. Loves ramen, vegetarian, gets cranky after 11pm, wants one chill day"
                   value={draft.notes}
-                  onChange={(e) => update(p.tempId, { notes: e.target.value })}
-                  rows={2}
+                  onChange={(e) => update(p.tempId, e.target.value)}
+                  rows={3}
                 />
               </div>
             </div>

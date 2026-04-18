@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, MapPin, Users, FileStack, Mic } from "lucide-react";
+import { Calendar, MapPin, Users, FileStack, StickyNote } from "lucide-react";
 
 import type { TripBasicsState } from "@/components/setup/StepTripBasics";
 import type { ParticipantDraft } from "@/components/setup/StepParticipants";
@@ -15,9 +15,6 @@ interface Props {
 }
 
 export function StepReview({ basics, participants, files, intros }: Props) {
-  const introsSaved = participants.filter(
-    (p) => intros[p.tempId]?.blob
-  ).length;
   const notesFilled = participants.filter((p) =>
     intros[p.tempId]?.notes?.trim()
   ).length;
@@ -111,13 +108,13 @@ export function StepReview({ basics, participants, files, intros }: Props) {
           }
         />
         <Row
-          icon={<Mic className="size-4" />}
-          label="Intros"
+          icon={<StickyNote className="size-4" />}
+          label="Notes"
           value={
             <div>
-              {introsSaved}/{participants.length} recorded
-              {notesFilled > 0
-                ? ` · ${notesFilled} with notes`
+              {notesFilled}/{participants.length} filled in
+              {notesFilled === 0
+                ? " — profiles will be shallow"
                 : ""}
             </div>
           }

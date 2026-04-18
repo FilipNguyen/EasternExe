@@ -59,7 +59,7 @@ create table upload_chunks (
   upload_id uuid not null references uploads(id) on delete cascade,
   trip_id uuid not null references trips(id) on delete cascade,
   content text not null,
-  embedding vector(1536),
+  embedding vector(2048),
   metadata jsonb default '{}',
   created_at timestamptz default now()
 );

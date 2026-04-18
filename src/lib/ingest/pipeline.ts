@@ -4,8 +4,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { callLlmJson, getZaiModel } from "@/lib/llm";
-import { chunkText, cosineSimilarity, embedMany } from "@/lib/embeddings";
-import { embedBatch } from "@/lib/openai";
+import {
+  chunkText,
+  cosineSimilarity,
+  embedBatch,
+  embedMany,
+} from "@/lib/embeddings";
 import {
   ingestProfileSystem,
   ingestProfileUser,
@@ -21,7 +25,6 @@ import {
 import { geocodeDestination, googlePlacesTextSearch } from "@/lib/places";
 import { parseWhatsAppZip } from "@/lib/ingest/whatsapp-parser";
 import { extractDocText } from "@/lib/ingest/doc-extract";
-import { transcribeAudio } from "@/lib/ingest/audio-transcribe";
 import {
   extractedPlacesResponseSchema,
   participantProfileLlmSchema,
@@ -133,7 +136,6 @@ async function extractFromUpload(
 ): Promise<{
   extracted: ExtractedText[];
   mediaUploads: { storage_path: string; filename: string; kind: Upload["kind"] }[];
-  transcript?: string;
 }> {
   const buf = await downloadUpload(supabase, upload.storage_path);
 
@@ -185,26 +187,9 @@ async function extractFromUpload(
     };
   }
 
-  if (upload.kind === "audio_intro") {
-    const transcript = await transcribeAudio(
-      buf,
-      upload.filename ?? "intro.webm"
-    );
-    return {
-      extracted: [
-        {
-          uploadId: upload.id,
-          participantId: upload.participant_id,
-          kind: upload.kind,
-          text: transcript,
-        },
-      ],
-      mediaUploads: [],
-      transcript,
-    };
-  }
-
-  // image or unknown — skip text extraction in v1
+  // audio_intro is a legacy kind from the Whisper pipeline; we no longer
+  // transcribe audio. If an upload still carries that kind we just skip it.
+  // image or unknown — also skip text extraction in v1
   return { extracted: [], mediaUploads: [] };
 }
 
@@ -243,7 +228,6 @@ export async function runIngestion(tripId: string): Promise<void> {
 
     // Step 1 — per-upload extraction
     const extractedTexts: ExtractedText[] = [];
-    const transcriptsByParticipant: Record<string, string> = {};
 
     for (const upload of uploads) {
       await setUploadStatus(supabase, upload.id, "processing");
@@ -261,24 +245,6 @@ export async function runIngestion(tripId: string): Promise<void> {
             filename: media.filename,
             status: "processed",
           });
-        }
-
-        // Save audio transcripts onto the profile row
-        if (
-          upload.kind === "audio_intro" &&
-          upload.participant_id &&
-          result.transcript
-        ) {
-          transcriptsByParticipant[upload.participant_id] = result.transcript;
-          await supabase
-            .from("participant_profiles")
-            .upsert(
-              {
-                participant_id: upload.participant_id,
-                raw_intro_transcript: result.transcript,
-              },
-              { onConflict: "participant_id" }
-            );
         }
 
         await setUploadStatus(supabase, upload.id, "processed");
@@ -344,22 +310,6 @@ export async function runIngestion(tripId: string): Promise<void> {
 
     // Step 4 — per-participant profile generation
     for (const p of participants) {
-      const transcript = transcriptsByParticipant[p.id] ?? "";
-
-      // Use the transcript itself as the RAG query if present; fallback to a
-      // generic preference prompt.
-      const query = transcript.trim()
-        ? `${p.display_name} preferences interests personality ${transcript.slice(0, 400)}`
-        : `${p.display_name} preferences interests personality`;
-      const [queryEmbedding] = await embedBatch([query]);
-      const excerpts = rankChunksByQuery(
-        chunks,
-        queryEmbedding,
-        PROFILE_EXCERPT_LIMIT
-      )
-        .map((c) => c.content)
-        .join("\n\n---\n\n");
-
       // Look up participant's text notes from uploads (kind='other' with participant_id=p.id)
       const { data: noteRows } = await supabase
         .from("uploads")
@@ -380,6 +330,19 @@ export async function runIngestion(tripId: string): Promise<void> {
         }
       }
 
+      // RAG query: notes text if we have them, else a generic preference query
+      const query = notes.trim()
+        ? `${p.display_name} preferences interests personality ${notes.slice(0, 400)}`
+        : `${p.display_name} preferences interests personality`;
+      const [queryEmbedding] = await embedBatch([query]);
+      const excerpts = rankChunksByQuery(
+        chunks,
+        queryEmbedding,
+        PROFILE_EXCERPT_LIMIT
+      )
+        .map((c) => c.content)
+        .join("\n\n---\n\n");
+
       const t0 = Date.now();
       try {
         const raw = await callLlmJson({
@@ -389,7 +352,7 @@ export async function runIngestion(tripId: string): Promise<void> {
               role: "user",
               content: ingestProfileUser({
                 displayName: p.display_name,
-                transcript,
+                transcript: "",
                 notes,
                 excerpts,
               }),
@@ -415,7 +378,7 @@ export async function runIngestion(tripId: string): Promise<void> {
               dislikes: parsed.data.dislikes,
               dealbreakers: parsed.data.dealbreakers,
               open_questions: parsed.data.open_questions,
-              raw_intro_transcript: transcript || null,
+              raw_intro_transcript: notes || null,
               updated_at: new Date().toISOString(),
             },
             { onConflict: "participant_id" }

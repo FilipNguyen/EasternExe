@@ -3,14 +3,15 @@ import "server-only";
 import OpenAI from "openai";
 
 /**
- * Z.ai LLM client. Assumes OpenAI-compatible; if Z.ai turns out to be
- * incompatible, swap the implementation here — callers only use the
- * exported helpers, not the OpenAI SDK directly.
+ * Z.ai LLM client. Assumed OpenAI-compatible; if Z.ai drifts, swap the
+ * implementation here — callers only use the exported helpers, not the
+ * OpenAI SDK directly.
  */
 
 let zaiClient: OpenAI | undefined;
+let zaiEmbeddingsClient: OpenAI | undefined;
 
-function getZaiClient(): OpenAI {
+export function getZaiClient(): OpenAI {
   if (zaiClient) return zaiClient;
   const apiKey = process.env.ZAI_API_KEY;
   const baseURL = process.env.ZAI_BASE_URL;
@@ -21,10 +22,33 @@ function getZaiClient(): OpenAI {
   return zaiClient;
 }
 
+/**
+ * Separate client for embeddings. Defaults to ZAI_BASE_URL; if Z.ai's coding
+ * endpoint doesn't support embeddings, set ZAI_EMBEDDINGS_BASE_URL to their
+ * general /paas/v4 endpoint.
+ */
+export function getZaiEmbeddingsClient(): OpenAI {
+  if (zaiEmbeddingsClient) return zaiEmbeddingsClient;
+  const apiKey = process.env.ZAI_API_KEY;
+  const baseURL =
+    process.env.ZAI_EMBEDDINGS_BASE_URL ?? process.env.ZAI_BASE_URL;
+  if (!apiKey || !baseURL) {
+    throw new Error(
+      "Missing ZAI_API_KEY / ZAI_BASE_URL (or ZAI_EMBEDDINGS_BASE_URL override)"
+    );
+  }
+  zaiEmbeddingsClient = new OpenAI({ apiKey, baseURL });
+  return zaiEmbeddingsClient;
+}
+
 export function getZaiModel(): string {
   const model = process.env.ZAI_MODEL;
   if (!model) throw new Error("Missing ZAI_MODEL — check .env.local");
   return model;
+}
+
+export function getZaiEmbeddingModel(): string {
+  return process.env.ZAI_EMBEDDING_MODEL ?? "embedding-3";
 }
 
 export interface LlmMessage {
@@ -85,7 +109,6 @@ export async function callLlmJson<T = unknown>(
   try {
     return JSON.parse(first.content) as T;
   } catch {
-    // one retry with repair prompt
     const repaired = await callLlm({
       ...opts,
       jsonMode: true,

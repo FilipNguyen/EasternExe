@@ -12,8 +12,7 @@ The full product + technical spec lives in [`BUILD_SPEC.md`](./BUILD_SPEC.md). M
 
 - **Node 20+** (`node --version`)
 - A **Supabase** project (free tier is fine; you'll need URL + anon key + service role key)
-- A **Z.ai** API key (OpenAI-compatible endpoint for the main agent)
-- An **OpenAI** API key (embeddings + Whisper only)
+- A **Z.ai** API key — powers both the main agent chat completions and the embedding vectors (OpenAI-compatible endpoint)
 - A **Mapbox** access token (public token is fine)
 - A **Google Places** API key (Places API enabled)
 - _Optional:_ a **Brave Search** API key (enables the research subagent's web search tool; degrades gracefully if absent)

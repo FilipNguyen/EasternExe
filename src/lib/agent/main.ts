@@ -3,8 +3,7 @@ import "server-only";
 import type OpenAI from "openai";
 
 import { callLlm, getZaiModel } from "@/lib/llm";
-import { embedBatch } from "@/lib/openai";
-import { cosineSimilarity } from "@/lib/embeddings";
+import { cosineSimilarity, embedBatch } from "@/lib/embeddings";
 import {
   executeTool,
   mainAgentTools,
