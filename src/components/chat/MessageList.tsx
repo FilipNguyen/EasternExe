@@ -5,11 +5,13 @@ import { ArrowDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { MessageBubble } from "@/components/chat/MessageBubble";
+import { MessageSkeleton } from "@/components/chat/MessageSkeleton";
 import type { Participant } from "@/types/db";
 import type { OptimisticMessage } from "@/hooks/useChatMessages";
 
 interface Props {
   messages: OptimisticMessage[];
+  loading?: boolean;
   participants: Record<string, Participant>;
   currentParticipantId: string | null;
   emptyState?: React.ReactNode;
@@ -20,6 +22,7 @@ const SCROLL_THRESHOLD_PX = 100;
 
 export function MessageList({
   messages,
+  loading,
   participants,
   currentParticipantId,
   emptyState,
@@ -60,7 +63,9 @@ export function MessageList({
         ref={ref}
         className="h-full overflow-y-auto px-4 py-6 sm:px-6"
       >
-        {messages.length === 0 && emptyState ? (
+        {loading && messages.length === 0 ? (
+          <MessageSkeleton />
+        ) : messages.length === 0 && emptyState ? (
           <div className="flex h-full items-center justify-center">
             {emptyState}
           </div>

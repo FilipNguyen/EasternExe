@@ -77,7 +77,8 @@ export function TripWorkspace({
   const activeRoomId =
     tab === "group" ? groupRoomId : tab === "me" ? myAgentRoomId : undefined;
 
-  const { messages, send } = useChatMessages(activeRoomId);
+  const { messages, loading: loadingMessages, send } =
+    useChatMessages(activeRoomId);
 
   // Redirect to /join if no participantId after hydration
   if (hydrated && !participantId) {
@@ -123,22 +124,50 @@ export function TripWorkspace({
         <div className="flex min-h-0 flex-1 flex-col pb-14 sm:pb-0">
           <MessageList
             messages={messages}
+            loading={loadingMessages}
             participants={participantMap}
             currentParticipantId={participantId}
             onShareToGroup={tab === "me" ? shareToGroup : undefined}
             emptyState={
-              <div className="mx-auto max-w-sm text-center">
-                <h3 className="text-base font-semibold">
-                  {tab === "group"
-                    ? "No messages yet"
-                    : "Your private assistant"}
-                </h3>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {tab === "group"
-                    ? "Say hi — or tag @agent once your trip is ingested."
-                    : "Ask anything about the trip. Your messages stay private to you."}
-                </p>
-              </div>
+              tab === "group" ? (
+                <div className="mx-auto max-w-sm text-center">
+                  <h3 className="text-base font-semibold">No messages yet</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Say hi to the group — or tag{" "}
+                    <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                      @agent
+                    </code>{" "}
+                    once your trip is ingested.
+                  </p>
+                </div>
+              ) : (
+                <div className="mx-auto max-w-sm text-center">
+                  <h3 className="text-base font-semibold">
+                    Your private assistant
+                  </h3>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Ask anything about the trip — only you see these replies.
+                  </p>
+                  <div className="mt-5 flex flex-wrap justify-center gap-2">
+                    {[
+                      "What should we do on day 1?",
+                      "Any tensions in the group I should know about?",
+                      "Find me a great dinner spot that fits the group.",
+                    ].map((prompt) => (
+                      <button
+                        key={prompt}
+                        type="button"
+                        onClick={() =>
+                          setPrefill((p) => ({ key: p.key + 1, text: prompt }))
+                        }
+                        className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
             }
           />
           <ChatInput
