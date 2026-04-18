@@ -60,19 +60,21 @@ export function useChatMessages(roomId: string | undefined) {
 
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("chat_messages")
-        .select("*")
-        .eq("room_id", roomId)
-        .order("created_at", { ascending: true })
-        .limit(INITIAL_LIMIT);
-      if (!active) return;
-      if (error) {
-        console.error("Failed to load messages:", error);
-      } else if (data) {
-        mergeIn(data as OptimisticMessage[]);
+      try {
+        const res = await fetch(
+          `/api/messages?room_id=${roomId}&limit=${INITIAL_LIMIT}`,
+          { cache: "no-store" }
+        );
+        const body = (await res.json().catch(() => ({}))) as {
+          messages?: OptimisticMessage[];
+        };
+        if (!active) return;
+        if (body.messages) mergeIn(body.messages);
+      } catch (e) {
+        console.error("Failed to load messages:", e);
+      } finally {
+        if (active) setLoading(false);
       }
-      setLoading(false);
     })();
 
     const channel = supabase

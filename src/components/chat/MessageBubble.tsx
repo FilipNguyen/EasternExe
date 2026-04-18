@@ -1,6 +1,7 @@
 import { Bot, Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { Markdown } from "@/components/chat/Markdown";
 import { ThinkingIndicator } from "@/components/chat/ThinkingIndicator";
 import { ShareToGroupButton } from "@/components/chat/ShareToGroupButton";
 import type { Participant } from "@/types/db";
@@ -136,8 +137,10 @@ export function MessageBubble({
         >
           {message.thinking_state === "thinking" && !message.content ? (
             <ThinkingIndicator />
-          ) : (
+          ) : isUser ? (
             <div className="whitespace-pre-wrap">{message.content}</div>
+          ) : (
+            <Markdown>{message.content}</Markdown>
           )}
           {message.thinking_state === "streaming" && message.content ? (
             <span className="ml-0.5 inline-block size-1.5 animate-pulse rounded-full bg-current align-middle" />

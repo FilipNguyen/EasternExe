@@ -70,7 +70,7 @@ export function MessageList({
             {emptyState}
           </div>
         ) : (
-          <div className="mx-auto flex max-w-2xl flex-col gap-4">
+          <div className="mx-auto flex max-w-3xl flex-col gap-4">
             {messages.map((m) => (
               <MessageBubble
                 key={m.id}

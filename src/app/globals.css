@@ -58,3 +58,38 @@
     font-feature-settings: "rlig" 1, "calt" 1;
   }
 }
+
+/* Map marker pulse (Pokemon Go vibe) — ring expands + fades around a dot. */
+@keyframes quorum-pulse {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.7;
+  }
+  80% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+.quorum-pulse-ring {
+  animation: quorum-pulse 2.2s ease-out infinite;
+}
+
+/* Slower pulse for participant locations so users can distinguish
+   themselves from venue pins. */
+.quorum-pulse-ring-slow {
+  animation: quorum-pulse 3.4s ease-out infinite;
+}
+
+/* Pokemon-ish bob for the current user's avatar marker. */
+@keyframes quorum-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+.quorum-bob {
+  animation: quorum-bob 1.6s ease-in-out infinite;
+}

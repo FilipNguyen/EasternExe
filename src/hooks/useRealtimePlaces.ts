@@ -15,14 +15,20 @@ export function useRealtimePlaces(tripId: string | undefined) {
     let active = true;
 
     (async () => {
-      const { data } = await supabase
-        .from("places")
-        .select("*")
-        .eq("trip_id", tripId)
-        .order("created_at", { ascending: true });
-      if (!active) return;
-      if (data) setPlaces(data as Place[]);
-      setLoading(false);
+      try {
+        const res = await fetch(`/api/places?trip_id=${tripId}`, {
+          cache: "no-store",
+        });
+        const body = (await res.json().catch(() => ({}))) as {
+          places?: Place[];
+        };
+        if (!active) return;
+        if (body.places) setPlaces(body.places);
+      } catch (e) {
+        console.error("useRealtimePlaces initial fetch failed:", e);
+      } finally {
+        if (active) setLoading(false);
+      }
     })();
 
     const channel = supabase

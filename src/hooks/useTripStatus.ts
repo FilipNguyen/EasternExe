@@ -14,15 +14,25 @@ export function useTripStatus(tripId: string | undefined, initialTrip?: Trip) {
     const supabase = getSupabaseBrowserClient();
     let active = true;
 
-    (async () => {
-      const [{ data: t }, { data: u }] = await Promise.all([
-        supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
-        supabase.from("uploads").select("*").eq("trip_id", tripId),
-      ]);
-      if (!active) return;
-      if (t) setTrip(t as Trip);
-      if (u) setUploads(u as Upload[]);
-    })();
+    const fetchFromServer = async () => {
+      try {
+        const res = await fetch(`/api/trips/${tripId}/snapshot`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          trip?: Trip;
+          uploads?: Upload[];
+        };
+        if (!active) return;
+        if (body.trip) setTrip(body.trip);
+        if (body.uploads) setUploads(body.uploads);
+      } catch (e) {
+        console.error("useTripStatus initial fetch failed:", e);
+      }
+    };
+
+    fetchFromServer();
 
     const channel = supabase
       .channel(`trip-status:${tripId}`)
@@ -70,20 +80,25 @@ export function useTripStatus(tripId: string | undefined, initialTrip?: Trip) {
       )
       .subscribe();
 
-    // Polling fallback. If Realtime isn't toggled on `trips`/`uploads` in the
-    // Supabase dashboard, the subscription is silent — so every 5s we re-
-    // fetch. Once trip.status === 'ready' we stop polling.
+    // Polling fallback via server snapshot (service role) — so we keep
+    // working even before migration 003 grants anon read access.
     const pollHandle = setInterval(async () => {
       if (!active) return;
-      const [{ data: t }, { data: u }] = await Promise.all([
-        supabase.from("trips").select("*").eq("id", tripId).maybeSingle(),
-        supabase.from("uploads").select("*").eq("trip_id", tripId),
-      ]);
-      if (!active) return;
-      if (t) setTrip(t as Trip);
-      if (u) setUploads(u as Upload[]);
-      if ((t as Trip | null)?.status === "ready") {
-        clearInterval(pollHandle);
+      try {
+        const res = await fetch(`/api/trips/${tripId}/snapshot`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const body = (await res.json()) as {
+          trip?: Trip;
+          uploads?: Upload[];
+        };
+        if (!active) return;
+        if (body.trip) setTrip(body.trip);
+        if (body.uploads) setUploads(body.uploads);
+        if (body.trip?.status === "ready") clearInterval(pollHandle);
+      } catch {
+        // Transient — keep polling.
       }
     }, 5000);
 

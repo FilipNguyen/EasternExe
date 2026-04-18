@@ -6,6 +6,27 @@ import { runAgent } from "@/lib/agent/main";
 import type { ChatRoom } from "@/types/db";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const roomId = url.searchParams.get("room_id");
+  const limit = Math.min(Number(url.searchParams.get("limit") ?? 100), 500);
+  if (!roomId) {
+    return NextResponse.json({ error: "room_id required" }, { status: 400 });
+  }
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select("*")
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  return NextResponse.json({ messages: data ?? [] });
+}
 
 const bodySchema = z.object({
   room_id: z.string().uuid(),

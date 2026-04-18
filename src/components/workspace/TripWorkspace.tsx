@@ -7,6 +7,8 @@ import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageList } from "@/components/chat/MessageList";
 import { TabsShell, type WorkspaceTab } from "@/components/workspace/TabsShell";
 import { IngestProgress } from "@/components/workspace/IngestProgress";
+import { TripBrainPanel } from "@/components/workspace/TripBrainPanel";
+import { TripInfoPanel } from "@/components/workspace/TripInfoPanel";
 import { TripMap } from "@/components/map/TripMap";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useParticipant } from "@/hooks/useParticipant";
@@ -66,9 +68,10 @@ export function TripWorkspace({
     }
   };
 
-  const participantMap = useMemo(() => {
-    return Object.fromEntries(participants.map((p) => [p.id, p]));
-  }, [participants]);
+  const participantMap = useMemo(
+    () => Object.fromEntries(participants.map((p) => [p.id, p])),
+    [participants]
+  );
 
   const myAgentRoomId = participantId
     ? agentRoomsByParticipant[participantId]
@@ -80,18 +83,18 @@ export function TripWorkspace({
   const { messages, loading: loadingMessages, send } =
     useChatMessages(activeRoomId);
 
-  // Redirect to /join if no participantId after hydration
   if (hydrated && !participantId) {
     router.replace(`/trip/${trip.id}/join`);
     return null;
   }
 
   const me = participantId ? participantMap[participantId] : null;
+  const isMapTab = tab === "map";
 
   return (
     <main className="flex h-dvh flex-col bg-background">
       <header className="border-b bg-background/80 backdrop-blur">
-        <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
+        <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold tracking-tight">
               {trip.name}
@@ -120,84 +123,109 @@ export function TripWorkspace({
 
       <TabsShell active={tab} onChange={setTab} />
 
-      {tab !== "map" ? (
-        <div className="flex min-h-0 flex-1 flex-col pb-14 sm:pb-0">
-          <MessageList
-            messages={messages}
-            loading={loadingMessages}
-            participants={participantMap}
-            currentParticipantId={participantId}
-            onShareToGroup={tab === "me" ? shareToGroup : undefined}
-            emptyState={
-              tab === "group" ? (
-                <div className="mx-auto max-w-sm text-center">
-                  <h3 className="text-base font-semibold">No messages yet</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Say hi to the group — or tag{" "}
-                    <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                      @agent
-                    </code>{" "}
-                    once your trip is ingested.
-                  </p>
-                </div>
-              ) : (
-                <div className="mx-auto max-w-sm text-center">
-                  <h3 className="text-base font-semibold">
-                    Your private assistant
-                  </h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Ask anything about the trip — only you see these replies.
-                  </p>
-                  <div className="mt-5 flex flex-wrap justify-center gap-2">
-                    {[
-                      "What should we do on day 1?",
-                      "Any tensions in the group I should know about?",
-                      "Find me a great dinner spot that fits the group.",
-                    ].map((prompt) => (
-                      <button
-                        key={prompt}
-                        type="button"
-                        onClick={() =>
-                          setPrefill((p) => ({ key: p.key + 1, text: prompt }))
-                        }
-                        className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      >
-                        {prompt}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )
-            }
-          />
-          <ChatInput
-            placeholder={
-              tab === "group"
-                ? "Message the group… (@agent to ask the AI)"
-                : "Ask your private assistant…"
-            }
-            onSend={(content) =>
-              send({
-                content,
-                senderParticipantId: participantId,
-                senderType: "user",
-              })
-            }
-            disabled={!activeRoomId || !participantId}
-            prefillKey={tab === "me" ? prefill.key : undefined}
-            prefillContent={prefill.text}
-          />
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col pb-14 sm:pb-0">
-          <TripMap
-            trip={trip}
-            places={places}
-            participants={participants}
-            onAskAgent={askAgentAbout}
-          />
-        </div>
-      )}
+      <div className="flex min-h-0 flex-1">
+        {!isMapTab ? (
+          <aside className="hidden w-64 shrink-0 lg:flex lg:flex-col">
+            <TripInfoPanel
+              trip={trip}
+              participants={participants}
+              currentParticipantId={participantId ?? null}
+              messages={messages}
+            />
+          </aside>
+        ) : null}
+
+        <section className="flex min-h-0 min-w-0 flex-1 flex-col pb-14 sm:pb-0">
+          {!isMapTab ? (
+            <>
+              <MessageList
+                messages={messages}
+                loading={loadingMessages}
+                participants={participantMap}
+                currentParticipantId={participantId}
+                onShareToGroup={tab === "me" ? shareToGroup : undefined}
+                emptyState={
+                  tab === "group" ? (
+                    <div className="mx-auto max-w-sm text-center">
+                      <h3 className="text-base font-semibold">
+                        No messages yet
+                      </h3>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Say hi to the group — or tag{" "}
+                        <code className="rounded bg-muted px-1 py-0.5 text-xs">
+                          @agent
+                        </code>{" "}
+                        once your trip is ingested.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mx-auto max-w-sm text-center">
+                      <h3 className="text-base font-semibold">
+                        Your private assistant
+                      </h3>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        Ask anything about the trip — only you see these replies.
+                      </p>
+                      <div className="mt-5 flex flex-wrap justify-center gap-2">
+                        {[
+                          "What should we do on day 1?",
+                          "Any tensions in the group I should know about?",
+                          "Find me a great dinner spot that fits the group.",
+                        ].map((prompt) => (
+                          <button
+                            key={prompt}
+                            type="button"
+                            onClick={() =>
+                              setPrefill((p) => ({
+                                key: p.key + 1,
+                                text: prompt,
+                              }))
+                            }
+                            className="rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          >
+                            {prompt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                }
+              />
+              <ChatInput
+                placeholder={
+                  tab === "group"
+                    ? "Message the group… (@agent to ask the AI)"
+                    : "Ask your private assistant…"
+                }
+                onSend={(content) =>
+                  send({
+                    content,
+                    senderParticipantId: participantId,
+                    senderType: "user",
+                  })
+                }
+                disabled={!activeRoomId || !participantId}
+                prefillKey={tab === "me" ? prefill.key : undefined}
+                prefillContent={prefill.text}
+              />
+            </>
+          ) : (
+            <TripMap
+              trip={trip}
+              places={places}
+              participants={participants}
+              currentParticipantId={participantId ?? null}
+              onAskAgent={askAgentAbout}
+            />
+          )}
+        </section>
+
+        {!isMapTab ? (
+          <aside className="hidden w-80 shrink-0 lg:flex lg:flex-col">
+            <TripBrainPanel tripId={trip.id} places={places} />
+          </aside>
+        ) : null}
+      </div>
 
       {trip.status !== "ready" ? (
         <IngestProgress trip={trip} uploads={uploads} />
