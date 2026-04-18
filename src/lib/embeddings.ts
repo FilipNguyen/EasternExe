@@ -1,23 +1,22 @@
 import "server-only";
 
-import { getZaiEmbeddingModel, getZaiEmbeddingsClient } from "@/lib/llm";
-
 /**
- * Embedding pipeline — Z.ai-only (no OpenAI).
+ * Chunking + context-assembly helpers.
  *
- * Approximate chunker. Targets ~500 tokens per chunk with ~50 overlap. Uses
- * character count with the 4 chars/token heuristic to avoid pulling in
- * tiktoken at runtime.
+ * v1 doesn't use vector embeddings. Z.ai's coding endpoint doesn't serve an
+ * embeddings model, and we committed to a Z.ai-only stack. For the scale of
+ * a single trip (~200 WhatsApp messages, ~10k tokens), we can feed the full
+ * chunked corpus as LLM context instead of similarity-ranking it.
+ *
+ * If we ever hit bigger corpora, swap in a local embedder (e.g.
+ * @xenova/transformers) here.
  */
+
 const CHARS_PER_TOKEN = 4;
 const TARGET_TOKENS = 500;
 const OVERLAP_TOKENS = 50;
 const MAX_CHARS = TARGET_TOKENS * CHARS_PER_TOKEN;
 const OVERLAP_CHARS = OVERLAP_TOKENS * CHARS_PER_TOKEN;
-
-/** Matches the DB schema vector(2048). If you swap to a different model, update
- * supabase/migrations/001_init.sql accordingly. */
-export const EMBEDDING_DIMS = 2048;
 
 export function chunkText(text: string): string[] {
   const clean = text.replace(/\r\n/g, "\n").trim();
@@ -48,40 +47,28 @@ export function chunkText(text: string): string[] {
   return chunks.filter((c) => c.length > 0);
 }
 
-const BATCH = 64;
-
 /**
- * Embed a batch of strings via Z.ai. Z.ai exposes embedding models at the
- * OpenAI-compatible `/embeddings` endpoint. Defaults to `embedding-3`
- * (2048 dims); override with ZAI_EMBEDDING_MODEL.
+ * Joins chunks into a single string, truncated to `maxChars`. Chunks are
+ * joined in insertion order (chronological for WhatsApp, document order
+ * otherwise).
  */
-export async function embedBatch(texts: string[]): Promise<number[][]> {
-  if (texts.length === 0) return [];
-  const client = getZaiEmbeddingsClient();
-  const model = getZaiEmbeddingModel();
-  const result = await client.embeddings.create({ model, input: texts });
-  return result.data
-    .sort((a, b) => a.index - b.index)
-    .map((d) => d.embedding);
-}
-
-export async function embedMany(texts: string[]): Promise<number[][]> {
-  const out: number[][] = [];
-  for (let i = 0; i < texts.length; i += BATCH) {
-    const batch = texts.slice(i, i + BATCH);
-    out.push(...(await embedBatch(batch)));
+export function concatChunks(
+  chunks: { content: string }[],
+  maxChars: number
+): string {
+  let out = "";
+  for (let i = 0; i < chunks.length; i++) {
+    const sep = i === 0 ? "" : "\n\n---\n\n";
+    const piece = `${sep}${chunks[i].content}`;
+    if (out.length + piece.length > maxChars) {
+      // Truncate the current chunk to fit
+      const remaining = maxChars - out.length - sep.length;
+      if (remaining > 200) {
+        out += sep + chunks[i].content.slice(0, remaining) + "…";
+      }
+      break;
+    }
+    out += piece;
   }
   return out;
-}
-
-export function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0;
-  let na = 0;
-  let nb = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    na += a[i] * a[i];
-    nb += b[i] * b[i];
-  }
-  return dot / (Math.sqrt(na) * Math.sqrt(nb) || 1);
 }

@@ -4,7 +4,7 @@ import type OpenAI from "openai";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
-import { cosineSimilarity, embedBatch } from "@/lib/embeddings";
+import { concatChunks } from "@/lib/embeddings";
 import { googlePlacesTextSearch } from "@/lib/places";
 import { braveSearch, isBraveAvailable } from "@/lib/brave";
 import type {
@@ -225,28 +225,18 @@ async function queryTripBrain(
   rawArgs: unknown,
   ctx: ToolContext
 ): Promise<string> {
-  const args = queryTripBrainArgs.parse(rawArgs);
-  const [queryEmbedding] = await embedBatch([args.question]);
+  // args.question is unused in v1 (no semantic ranking). Kept for API
+  // compat with agents that still pass it; the LLM can filter the corpus
+  // itself when given the full text.
+  queryTripBrainArgs.parse(rawArgs);
   const { data } = await ctx.supabase
     .from("upload_chunks")
-    .select("id, content, embedding")
-    .eq("trip_id", ctx.tripId);
-
-  type Row = { id: string; content: string; embedding: number[] | string };
-  const rows = (data ?? []) as Row[];
-  const ranked = rows
-    .map((r) => {
-      const emb: number[] =
-        typeof r.embedding === "string" ? JSON.parse(r.embedding) : r.embedding;
-      return { id: r.id, content: r.content, score: cosineSimilarity(queryEmbedding, emb) };
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
-
-  if (ranked.length === 0) return "No relevant passages found.";
-  return ranked
-    .map((r, i) => `[${i + 1}] ${r.content.slice(0, 1200)}`)
-    .join("\n\n---\n\n");
+    .select("id, content, created_at")
+    .eq("trip_id", ctx.tripId)
+    .order("created_at", { ascending: true });
+  const rows = (data ?? []) as { id: string; content: string }[];
+  if (rows.length === 0) return "No materials ingested yet.";
+  return concatChunks(rows, 6000);
 }
 
 // ---------------------------------------------------------------

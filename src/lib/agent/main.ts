@@ -3,7 +3,7 @@ import "server-only";
 import type OpenAI from "openai";
 
 import { callLlm, getZaiModel } from "@/lib/llm";
-import { cosineSimilarity, embedBatch } from "@/lib/embeddings";
+import { concatChunks } from "@/lib/embeddings";
 import {
   executeTool,
   mainAgentTools,
@@ -29,7 +29,6 @@ import type {
 } from "@/types/db";
 
 const HISTORY_LIMIT = 20;
-const RAG_LIMIT = 5;
 const MAX_TURNS = 5;
 
 export interface RunAgentArgs {
@@ -114,32 +113,18 @@ export async function runAgent(args: RunAgentArgs): Promise<void> {
       ...p,
     }));
 
-    // RAG: embed the trigger message content and retrieve top 5 chunks
+    // Trip-brain context: v1 feeds the full corpus (truncated) rather than
+    // similarity-ranking. Fine for one trip with ~200 messages; swap in a
+    // real embedder if this scales.
     let ragChunks = "";
     if (triggerMsg.content.trim()) {
-      const [queryEmbedding] = await embedBatch([triggerMsg.content]);
       const { data: chunkRows } = await supabase
         .from("upload_chunks")
-        .select("id, content, embedding")
-        .eq("trip_id", args.tripId);
-      type Row = { id: string; content: string; embedding: number[] | string };
-      const rows = (chunkRows ?? []) as Row[];
-      const ranked = rows
-        .map((r) => {
-          const emb: number[] =
-            typeof r.embedding === "string"
-              ? JSON.parse(r.embedding)
-              : r.embedding;
-          return {
-            content: r.content,
-            score: cosineSimilarity(queryEmbedding, emb),
-          };
-        })
-        .sort((a, b) => b.score - a.score)
-        .slice(0, RAG_LIMIT);
-      ragChunks = ranked
-        .map((r, i) => `[${i + 1}] ${r.content.slice(0, 1000)}`)
-        .join("\n\n---\n\n");
+        .select("id, content, created_at")
+        .eq("trip_id", args.tripId)
+        .order("created_at", { ascending: true });
+      const chunks = (chunkRows ?? []) as { id: string; content: string }[];
+      ragChunks = concatChunks(chunks, 5000);
     }
 
     // Decide mode and build system prompt

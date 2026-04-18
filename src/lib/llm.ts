@@ -3,13 +3,16 @@ import "server-only";
 import OpenAI from "openai";
 
 /**
- * Z.ai LLM client. Assumed OpenAI-compatible; if Z.ai drifts, swap the
- * implementation here — callers only use the exported helpers, not the
- * OpenAI SDK directly.
+ * Z.ai LLM client (OpenAI-compatible).
+ *
+ * GLM-5.1 is a reasoning model: by default it burns completion tokens in its
+ * hidden reasoning phase and returns empty content when max_tokens is tight.
+ * We disable reasoning (`thinking: { type: "disabled" }`) for every call so
+ * tokens go directly into the visible response. Re-enable per-call by passing
+ * `reasoning: true` through the options.
  */
 
 let zaiClient: OpenAI | undefined;
-let zaiEmbeddingsClient: OpenAI | undefined;
 
 export function getZaiClient(): OpenAI {
   if (zaiClient) return zaiClient;
@@ -22,33 +25,10 @@ export function getZaiClient(): OpenAI {
   return zaiClient;
 }
 
-/**
- * Separate client for embeddings. Defaults to ZAI_BASE_URL; if Z.ai's coding
- * endpoint doesn't support embeddings, set ZAI_EMBEDDINGS_BASE_URL to their
- * general /paas/v4 endpoint.
- */
-export function getZaiEmbeddingsClient(): OpenAI {
-  if (zaiEmbeddingsClient) return zaiEmbeddingsClient;
-  const apiKey = process.env.ZAI_API_KEY;
-  const baseURL =
-    process.env.ZAI_EMBEDDINGS_BASE_URL ?? process.env.ZAI_BASE_URL;
-  if (!apiKey || !baseURL) {
-    throw new Error(
-      "Missing ZAI_API_KEY / ZAI_BASE_URL (or ZAI_EMBEDDINGS_BASE_URL override)"
-    );
-  }
-  zaiEmbeddingsClient = new OpenAI({ apiKey, baseURL });
-  return zaiEmbeddingsClient;
-}
-
 export function getZaiModel(): string {
   const model = process.env.ZAI_MODEL;
   if (!model) throw new Error("Missing ZAI_MODEL — check .env.local");
   return model;
-}
-
-export function getZaiEmbeddingModel(): string {
-  return process.env.ZAI_EMBEDDING_MODEL ?? "embedding-3";
 }
 
 export interface LlmMessage {
@@ -66,6 +46,8 @@ export interface LlmCallOptions {
   tools?: OpenAI.Chat.Completions.ChatCompletionTool[];
   toolChoice?: OpenAI.Chat.Completions.ChatCompletionToolChoiceOption;
   model?: string;
+  /** Opt in to GLM's hidden reasoning phase. Off by default. */
+  reasoning?: boolean;
 }
 
 export interface LlmCallResult {
@@ -87,6 +69,10 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult> {
     response_format: opts.jsonMode ? { type: "json_object" } : undefined,
     tools: opts.tools,
     tool_choice: opts.toolChoice,
+    // Z.ai-specific: toggle GLM's reasoning phase. Passed through since the
+    // OpenAI SDK forwards unknown body keys.
+    // @ts-expect-error — not in OpenAI SDK types
+    thinking: { type: opts.reasoning ? "enabled" : "disabled" },
   });
 
   const choice = completion.choices[0];

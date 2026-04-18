@@ -4,12 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { callLlmJson, getZaiModel } from "@/lib/llm";
-import {
-  chunkText,
-  cosineSimilarity,
-  embedBatch,
-  embedMany,
-} from "@/lib/embeddings";
+import { chunkText, concatChunks } from "@/lib/embeddings";
 import {
   ingestProfileSystem,
   ingestProfileUser,
@@ -33,9 +28,9 @@ import {
 import type { Participant, Trip, Upload } from "@/types/db";
 
 const BUCKET = "trip-uploads";
-const PROFILE_EXCERPT_LIMIT = 10;
-const MEMORY_EXCERPT_LIMIT = 30;
-const PLACES_EXCERPT_LIMIT = 30;
+const PROFILE_CONTEXT_CHARS = 6000;
+const MEMORY_CONTEXT_CHARS = 12000;
+const PLACES_CONTEXT_CHARS = 12000;
 
 // ---------------------------------------------------------------
 // helpers
@@ -103,21 +98,6 @@ function getModelNameSafely(): string | null {
   }
 }
 
-function rankChunksByQuery(
-  chunks: { id: string; content: string; embedding: number[] }[],
-  queryEmbedding: number[],
-  limit: number
-): { id: string; content: string }[] {
-  return chunks
-    .map((c) => ({
-      id: c.id,
-      content: c.content,
-      score: cosineSimilarity(queryEmbedding, c.embedding),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map(({ id, content }) => ({ id, content }));
-}
 
 // ---------------------------------------------------------------
 // text extraction per upload
@@ -255,31 +235,26 @@ export async function runIngestion(tripId: string): Promise<void> {
       }
     }
 
-    // Step 2 — chunk + embed all extracted text
+    // Step 2 — chunk + persist all extracted text
     const allChunkRows: {
       upload_id: string;
       trip_id: string;
       content: string;
-      embedding: number[];
     }[] = [];
 
     for (const ex of extractedTexts) {
       if (!ex.text.trim()) continue;
       const pieces = chunkText(ex.text);
-      if (pieces.length === 0) continue;
-      const embeddings = await embedMany(pieces);
-      for (let i = 0; i < pieces.length; i++) {
+      for (const piece of pieces) {
         allChunkRows.push({
           upload_id: ex.uploadId,
           trip_id: tripId,
-          content: pieces[i],
-          embedding: embeddings[i],
+          content: piece,
         });
       }
     }
 
     if (allChunkRows.length > 0) {
-      // Insert in batches of 100 to avoid oversized payloads
       for (let i = 0; i < allChunkRows.length; i += 100) {
         const batch = allChunkRows.slice(i, i + 100);
         const { error: insertErr } = await supabase
@@ -291,22 +266,14 @@ export async function runIngestion(tripId: string): Promise<void> {
       }
     }
 
-    // Step 3 — build in-memory chunk list for ranking (re-fetch so IDs are real)
+    // Step 3 — load chunks (chronological order) for context assembly
     const { data: chunkRows } = await supabase
       .from("upload_chunks")
-      .select("id, content, embedding")
-      .eq("trip_id", tripId);
+      .select("id, content, created_at")
+      .eq("trip_id", tripId)
+      .order("created_at", { ascending: true });
 
-    type ChunkForRanking = { id: string; content: string; embedding: number[] };
-    const chunks: ChunkForRanking[] = (chunkRows ?? []).map((r: unknown) => {
-      const row = r as { id: string; content: string; embedding: number[] | string };
-      // Supabase sometimes returns embeddings as a string like "[0.1, 0.2, ...]"
-      const embedding: number[] =
-        typeof row.embedding === "string"
-          ? JSON.parse(row.embedding)
-          : row.embedding;
-      return { id: row.id, content: row.content, embedding };
-    });
+    const chunks = (chunkRows ?? []) as { id: string; content: string }[];
 
     // Step 4 — per-participant profile generation
     for (const p of participants) {
@@ -330,18 +297,7 @@ export async function runIngestion(tripId: string): Promise<void> {
         }
       }
 
-      // RAG query: notes text if we have them, else a generic preference query
-      const query = notes.trim()
-        ? `${p.display_name} preferences interests personality ${notes.slice(0, 400)}`
-        : `${p.display_name} preferences interests personality`;
-      const [queryEmbedding] = await embedBatch([query]);
-      const excerpts = rankChunksByQuery(
-        chunks,
-        queryEmbedding,
-        PROFILE_EXCERPT_LIMIT
-      )
-        .map((c) => c.content)
-        .join("\n\n---\n\n");
+      const excerpts = concatChunks(chunks, PROFILE_CONTEXT_CHARS);
 
       const t0 = Date.now();
       try {
@@ -408,16 +364,7 @@ export async function runIngestion(tripId: string): Promise<void> {
 
     // Step 5 — trip memory
     {
-      const [queryEmbedding] = await embedBatch([
-        `group preferences constraints priorities tensions decisions open questions ${trip.destination ?? ""}`,
-      ]);
-      const excerpts = rankChunksByQuery(
-        chunks,
-        queryEmbedding,
-        MEMORY_EXCERPT_LIMIT
-      )
-        .map((c) => c.content)
-        .join("\n\n---\n\n");
+      const excerpts = concatChunks(chunks, MEMORY_CONTEXT_CHARS);
 
       const t0 = Date.now();
       try {
@@ -476,16 +423,7 @@ export async function runIngestion(tripId: string): Promise<void> {
 
     // Step 6 — places extraction + Google Places geocoding
     {
-      const [queryEmbedding] = await embedBatch([
-        `places restaurants bars sights attractions neighborhoods shopping ${trip.destination ?? ""}`,
-      ]);
-      const excerpts = rankChunksByQuery(
-        chunks,
-        queryEmbedding,
-        PLACES_EXCERPT_LIMIT
-      )
-        .map((c) => c.content)
-        .join("\n\n---\n\n");
+      const excerpts = concatChunks(chunks, PLACES_CONTEXT_CHARS);
 
       const t0 = Date.now();
       try {

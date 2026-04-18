@@ -6,7 +6,6 @@
 -- ---------------------------------------------------------------
 -- Extensions
 -- ---------------------------------------------------------------
-create extension if not exists vector;
 create extension if not exists "uuid-ossp";
 
 -- ---------------------------------------------------------------
@@ -52,18 +51,19 @@ create table uploads (
 );
 
 -- ---------------------------------------------------------------
--- upload_chunks (RAG)
+-- upload_chunks (retrieval — v1 stores chunked text only. Z.ai doesn't
+-- expose an embeddings endpoint so we feed whole-corpus context to the LLM
+-- instead of similarity-ranking chunks. Add an embedding column later if
+-- you swap in a local embedder like @xenova/transformers.)
 -- ---------------------------------------------------------------
 create table upload_chunks (
   id uuid primary key default gen_random_uuid(),
   upload_id uuid not null references uploads(id) on delete cascade,
   trip_id uuid not null references trips(id) on delete cascade,
   content text not null,
-  embedding vector(2048),
   metadata jsonb default '{}',
   created_at timestamptz default now()
 );
-create index on upload_chunks using ivfflat (embedding vector_cosine_ops) with (lists = 100);
 create index on upload_chunks (trip_id);
 
 -- ---------------------------------------------------------------
