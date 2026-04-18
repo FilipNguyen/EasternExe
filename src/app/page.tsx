@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 
 export default function LandingPage() {
   return (
-    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-sky-50 px-6">
+    <main className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-indigo-50 px-6">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,hsl(var(--muted))_0%,transparent_70%)]"
