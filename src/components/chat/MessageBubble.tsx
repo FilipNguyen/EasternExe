@@ -2,6 +2,7 @@ import { Bot, Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { ThinkingIndicator } from "@/components/chat/ThinkingIndicator";
+import { ShareToGroupButton } from "@/components/chat/ShareToGroupButton";
 import type { Participant } from "@/types/db";
 import type { OptimisticMessage } from "@/hooks/useChatMessages";
 
@@ -9,6 +10,7 @@ interface Props {
   message: OptimisticMessage;
   participants: Record<string, Participant>;
   currentParticipantId: string | null;
+  onShareToGroup?: (messageId: string) => Promise<void>;
 }
 
 function Avatar({
@@ -35,7 +37,13 @@ export function MessageBubble({
   message,
   participants,
   currentParticipantId,
+  onShareToGroup,
 }: Props) {
+  const canShare =
+    !!onShareToGroup &&
+    (message.sender_type === "agent" || message.sender_type === "subagent") &&
+    message.thinking_state !== "thinking" &&
+    !!message.content;
   const isUser = message.sender_type === "user";
   const isAgent = message.sender_type === "agent";
   const isSubagent = message.sender_type === "subagent";
@@ -139,6 +147,12 @@ export function MessageBubble({
           <span className="px-1 text-[10px] text-destructive">
             Failed to send
           </span>
+        ) : null}
+        {canShare ? (
+          <ShareToGroupButton
+            messageId={message.id}
+            onShare={onShareToGroup!}
+          />
         ) : null}
       </div>
     </div>

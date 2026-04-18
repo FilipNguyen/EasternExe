@@ -49,6 +49,23 @@ export function TripWorkspace({
     }));
   };
 
+  const shareToGroup = async (messageId: string) => {
+    if (!participantId) throw new Error("No participant");
+    const res = await fetch("/api/share-to-group", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        message_id: messageId,
+        group_room_id: groupRoomId,
+        shared_by_participant_id: participantId,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.error ?? "Share failed");
+    }
+  };
+
   const participantMap = useMemo(() => {
     return Object.fromEntries(participants.map((p) => [p.id, p]));
   }, [participants]);
@@ -108,6 +125,7 @@ export function TripWorkspace({
             messages={messages}
             participants={participantMap}
             currentParticipantId={participantId}
+            onShareToGroup={tab === "me" ? shareToGroup : undefined}
             emptyState={
               <div className="mx-auto max-w-sm text-center">
                 <h3 className="text-base font-semibold">

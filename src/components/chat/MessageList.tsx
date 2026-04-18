@@ -13,6 +13,7 @@ interface Props {
   participants: Record<string, Participant>;
   currentParticipantId: string | null;
   emptyState?: React.ReactNode;
+  onShareToGroup?: (messageId: string) => Promise<void>;
 }
 
 const SCROLL_THRESHOLD_PX = 100;
@@ -22,6 +23,7 @@ export function MessageList({
   participants,
   currentParticipantId,
   emptyState,
+  onShareToGroup,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
@@ -70,6 +72,7 @@ export function MessageList({
                 message={m}
                 participants={participants}
                 currentParticipantId={currentParticipantId}
+                onShareToGroup={onShareToGroup}
               />
             ))}
           </div>
