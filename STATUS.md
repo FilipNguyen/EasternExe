@@ -1,6 +1,12 @@
 # Quorum — current state + next-session playbook
 
-_Last updated: 2026-04-18 by Claude Opus 4.7 (1M ctx). Remote: `FilipNguyen/EasternExe` `main` @ `eb60a6e`._
+_Last updated: 2026-04-18 by Claude Opus 4.7 (1M ctx). Remote: `FilipNguyen/EasternExe` `main` @ `fd72f43`._
+
+## 🚨 THE MOST RECENT THING (what to pick up on)
+
+Anon-key bug discovered and migration 003 written + pushed but **NOT YET APPLIED** by the user. User must paste `supabase/migrations/003_grant_anon.sql` into SQL editor + Run, then hard-refresh the browser. Once that's done, chat + map + polling all unblock.
+
+If the user says "I ran it" on resume: verify via `curl "$NEXT_PUBLIC_SUPABASE_URL/rest/v1/places?trip_id=eq.090319ab-dafe-4ad2-be70-5a0a83cb5aac&select=id" -H "apikey: $NEXT_PUBLIC_SUPABASE_ANON_KEY"` — expect a non-empty array of 42 places.
 
 ## One-liner
 
@@ -148,14 +154,17 @@ The user approved and I committed to these next but hit the "show me working" ch
 2. **Z.ai has no embeddings endpoint.** Tried `embedding`, `embedding-2`, `embedding-3`, `bge-m3`, `text-embedding-3-small` at both coding + paas URLs — all return "Unknown Model". Don't re-add embedding logic without swapping to a local embedder (e.g. `@xenova/transformers`).
 3. **Tool-call narrowing.** Recent OpenAI SDK types union `ChatCompletionMessageFunctionToolCall` with custom calls. Always narrow with `tc.type === "function"` before reading `tc.function.*`.
 4. **Supabase storage requires explicit policies.** Disabled table RLS doesn't cover the storage bucket. `002_storage_policies.sql` must run or client uploads 403.
-5. **Realtime must be toggled per-table** in Dashboard → Database → Replication. Our 7 tables need this: `trips`, `participants`, `uploads`, `chat_messages`, `places`, `participant_profiles`, `trip_memory`.
-6. **`test-data/` reads from `process.cwd()`.** The seed endpoint works in local dev. For Vercel deploy, either bundle the fixtures in `public/` or remove the endpoint from production.
-7. **shadcn init v4 broke with our Tailwind v3 setup.** We rolled back to hand-coded Radix-based primitives; don't let `npx shadcn add` touch `components/ui/` without checking what Tailwind version it targets.
-8. **pdf-parse dynamic import** is required — direct import fires a test-file probe at startup that crashes Next.
+5. **Supabase NEW-format API keys don't auto-grant public schema.** The user's key starts with `sb_publishable_*` (not the legacy `eyJ...` JWT). Unlike the old anon JWT, the new format requires an explicit `GRANT SELECT/INSERT/UPDATE/DELETE` to the `anon` + `authenticated` roles. Without this, PostgREST returns `[]` for every browser read even though RLS is off. Fix: `003_grant_anon.sql`.
+6. **Realtime must be toggled per-table** in Dashboard → Database → Replication. Our 7 tables need this: `trips`, `participants`, `uploads`, `chat_messages`, `places`, `participant_profiles`, `trip_memory`. `useTripStatus` has a 5s polling fallback for when this isn't set.
+7. **`test-data/` reads from `process.cwd()`.** The seed endpoint works in local dev. For Vercel deploy, either bundle the fixtures in `public/` or remove the endpoint from production.
+8. **shadcn init v4 broke with our Tailwind v3 setup.** We rolled back to hand-coded Radix-based primitives; don't let `npx shadcn add` touch `components/ui/` without checking what Tailwind version it targets.
+9. **pdf-parse dynamic import** is required — direct import fires a test-file probe at startup that crashes Next.
 
 ## Commit history (milestone-ordered)
 
 ```
+fd72f43 fix(migration): grant anon + authenticated read/write on public schema
+c3ca4fa fix: polling fallback for useTripStatus when Realtime is off
 eb60a6e chore(test-data): weave ~30 Google-Maps places into the WhatsApp chat
 567591d refactor: drop embeddings entirely + add test fixtures + /api/health + /api/seed-test-trip
 d4088fe refactor: drop OpenAI — Z.ai handles chat + embeddings, no audio intros
