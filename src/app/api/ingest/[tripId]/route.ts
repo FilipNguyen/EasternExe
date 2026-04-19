@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { waitUntil } from "@vercel/functions";
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { runIngestion } from "@/lib/ingest/pipeline";
 
 export const runtime = "nodejs";
-// Hobby plan caps serverless functions at 60s. This route only flips status
-// and dispatches to /extract — the heavy work happens across the chained
-// endpoints under src/app/api/ingest/[tripId]/{extract,profiles,...}.
 export const maxDuration = 60;
+
+const isVercel = !!process.env.VERCEL;
 
 export async function POST(
   req: Request,
@@ -23,16 +23,29 @@ export async function POST(
     .update({ status: "ingesting", error: null })
     .eq("id", params.tripId);
 
-  const extractUrl = new URL(
-    `/api/ingest/${params.tripId}/extract`,
-    req.url
-  ).toString();
+  if (isVercel) {
+    // On Vercel: use chained endpoints so each step gets its own 60s budget.
+    // waitUntil keeps the function alive past the response.
+    const extractUrl = new URL(
+      `/api/ingest/${params.tripId}/extract`,
+      req.url
+    ).toString();
 
-  waitUntil(
-    fetch(extractUrl, { method: "POST" }).catch((e) =>
-      console.error("extract dispatch failed:", e)
-    )
-  );
+    waitUntil(
+      fetch(extractUrl, { method: "POST" }).catch((e) =>
+        console.error("extract dispatch failed:", e)
+      )
+    );
+  } else {
+    // Local dev: waitUntil is a no-op outside Vercel, so the chained fetch
+    // would never execute. Run the legacy single-invocation path instead —
+    // no 60s cap locally, everything completes in-process.
+    waitUntil(
+      runIngestion(params.tripId).catch((e) =>
+        console.error("runIngestion failed:", e)
+      )
+    );
+  }
 
   return NextResponse.json({ ok: true, tripId: params.tripId }, { status: 202 });
 }

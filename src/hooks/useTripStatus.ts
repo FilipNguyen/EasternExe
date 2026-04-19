@@ -6,14 +6,14 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { Trip, Upload } from "@/types/db";
 
 const RESUME_AFTER_MS = 20_000;
-const RESUME_COOLDOWN_MS = 30_000;
+const RESUME_INTERVAL_MS = 30_000;
 
 export function useTripStatus(tripId: string | undefined, initialTrip?: Trip) {
   const [trip, setTrip] = useState<Trip | undefined>(initialTrip);
   const [uploads, setUploads] = useState<Upload[]>([]);
 
-  // Resume logic: track when we first saw ingesting, and when we last
-  // fired a resume call (to avoid spamming on every render).
+  // Track when ingestion started and when we last fired a resume.
+  // Lives in refs so the polling interval always sees current values.
   const ingestStartRef = useRef<number | null>(null);
   const lastResumeRef = useRef<number>(0);
 
@@ -90,6 +90,8 @@ export function useTripStatus(tripId: string | undefined, initialTrip?: Trip) {
 
     // Polling fallback via server snapshot (service role) — so we keep
     // working even before migration 003 grants anon read access.
+    // Also drives the auto-resume: if status stays 'ingesting' for
+    // >20s, fire /resume every 30s until it clears.
     const pollHandle = setInterval(async () => {
       if (!active) return;
       try {
@@ -104,7 +106,26 @@ export function useTripStatus(tripId: string | undefined, initialTrip?: Trip) {
         if (!active) return;
         if (body.trip) setTrip(body.trip);
         if (body.uploads) setUploads(body.uploads);
-        if (body.trip?.status === "ready") clearInterval(pollHandle);
+        if (body.trip?.status === "ready" || body.trip?.status === "error") {
+          clearInterval(pollHandle);
+          return;
+        }
+
+        // Auto-resume: if ingesting for too long, kick /resume
+        if (body.trip?.status === "ingesting") {
+          if (!ingestStartRef.current) {
+            ingestStartRef.current = Date.now();
+          }
+          const elapsed = Date.now() - ingestStartRef.current;
+          const sinceLastResume = Date.now() - lastResumeRef.current;
+
+          if (elapsed >= RESUME_AFTER_MS && sinceLastResume >= RESUME_INTERVAL_MS) {
+            lastResumeRef.current = Date.now();
+            fetch(`/api/ingest/${tripId}/resume`, { method: "POST" }).catch(
+              (e) => console.error("auto-resume failed:", e)
+            );
+          }
+        }
       } catch {
         // Transient — keep polling.
       }
@@ -116,32 +137,6 @@ export function useTripStatus(tripId: string | undefined, initialTrip?: Trip) {
       supabase.removeChannel(channel);
     };
   }, [tripId]);
-
-  // Resume: if trip is ingesting and has been for >20s without completing,
-  // fire the resume endpoint once. The endpoint is idempotent.
-  const tripStatus = trip?.status;
-  useEffect(() => {
-    if (!tripId) return;
-
-    if (tripStatus === "ingesting") {
-      if (!ingestStartRef.current) {
-        ingestStartRef.current = Date.now();
-      }
-
-      const elapsed = Date.now() - ingestStartRef.current;
-      const sinceLastResume = Date.now() - lastResumeRef.current;
-
-      if (elapsed >= RESUME_AFTER_MS && sinceLastResume >= RESUME_COOLDOWN_MS) {
-        lastResumeRef.current = Date.now();
-        fetch(`/api/ingest/${tripId}/resume`, { method: "POST" }).catch(
-          (e) => console.error("auto-resume failed:", e)
-        );
-      }
-    } else {
-      // Trip left ingesting state — reset the timer for next time
-      ingestStartRef.current = null;
-    }
-  }, [tripId, tripStatus]);
 
   return { trip, uploads };
 }
