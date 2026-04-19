@@ -13,6 +13,7 @@ import { TripInfoPanel } from "@/components/workspace/TripInfoPanel";
 import { NearbyPanel } from "@/components/workspace/NearbyPanel";
 import { EventsPanel } from "@/components/workspace/EventsPanel";
 import { AddContextPanel } from "@/components/workspace/AddContextPanel";
+import { TripUserMenu } from "@/components/workspace/TripUserMenu";
 import { TripMap } from "@/components/map/TripMap";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useChatInactivityWatcher } from "@/hooks/useChatInactivityWatcher";
@@ -134,18 +135,11 @@ export function TripWorkspace({
               Add
             </button>
             {me ? (
-              <>
-                <span className="text-xs text-muted-foreground">
-                  {me.display_name}
-                </span>
-                <div
-                  className="flex size-7 items-center justify-center rounded-full text-xs font-semibold text-white"
-                  style={{ backgroundColor: me.color }}
-                  aria-hidden
-                >
-                  {me.display_name.charAt(0).toUpperCase()}
-                </div>
-              </>
+              <TripUserMenu
+                tripId={trip.id}
+                displayName={me.display_name}
+                color={me.color}
+              />
             ) : null}
           </div>
         </div>
