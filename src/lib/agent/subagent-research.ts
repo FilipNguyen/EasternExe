@@ -15,14 +15,12 @@ import {
 } from "@/lib/prompts/subagent-research";
 import type { TripMemory } from "@/types/db";
 
-const MAX_TURNS = 5;
+const MAX_TURNS = 3;
 
 const STAGE_MESSAGES: Record<string, string> = {
   search_places: "Checking out the best spots nearby...",
   web_search: "Looking for any special events happening...",
   save_place: "Saving a great find to your map...",
-  query_trip_brain: "Reading your group's travel notes...",
-  get_participant_profile: "Checking everyone's preferences...",
 };
 
 function friendlyStage(toolNames: string[]): string {
@@ -45,17 +43,17 @@ export async function runResearchSubagent(args: {
 }): Promise<string> {
   const t0 = Date.now();
 
-  const insertStatus = async (content: string) => {
-    await args.supabase.from("chat_messages").insert({
+  // Insert status messages without awaiting to reduce latency
+  const insertStatus = (content: string) =>
+    args.supabase.from("chat_messages").insert({
       room_id: args.roomId,
       sender_type: "subagent",
       sender_label: "Research Agent",
       content,
       thinking_state: "streaming",
     });
-  };
 
-  // 1. Insert the subagent "thinking" placeholder message
+  // Insert the subagent placeholder -- this is the message we'll update with the final answer
   const { data: placeholder, error: placeholderErr } = await args.supabase
     .from("chat_messages")
     .insert({
@@ -110,16 +108,6 @@ export async function runResearchSubagent(args: {
     let lastStageInserted = "";
 
     for (let turn = 0; turn < MAX_TURNS; turn++) {
-      const isLastTurn = turn === MAX_TURNS - 1;
-      if (!isLastTurn) {
-        await updateSubagent({
-          content: isLastTurn
-            ? "Putting it all together..."
-            : "Narrowing down the best options...",
-          thinking_state: "streaming",
-        });
-      }
-
       const result = await callLlm({
         messages: messages as unknown as Parameters<typeof callLlm>[0]["messages"],
         tools: subagentResearchTools,
@@ -131,11 +119,7 @@ export async function runResearchSubagent(args: {
       );
 
       if (fnCalls.length === 0) {
-        // Insert a "putting together" status before the final
-        if (lastStageInserted !== "Putting it all together...") {
-          await insertStatus("Putting it all together...");
-        }
-
+        // Final response -- write directly to the placeholder
         const finalContent =
           result.content.trim() ||
           "I couldn't find enough to recommend with confidence.";
@@ -153,22 +137,21 @@ export async function runResearchSubagent(args: {
           model: getZaiModel(),
         });
 
-        return finalContent;
+        // Return empty string so the main agent knows not to add another message
+        return "";
       }
 
-      // Insert a friendly stage message in chat for each tool batch
+      // Fire-and-forget stage message + placeholder update (non-blocking)
       const stageMsg = friendlyStage(fnCalls.map((tc) => tc.function.name));
       if (stageMsg !== lastStageInserted) {
-        await insertStatus(stageMsg);
+        insertStatus(stageMsg); // don't await
         lastStageInserted = stageMsg;
       }
-
-      // Update placeholder with tool progress
       const toolNames = fnCalls.map((tc) => tc.function.name).join(", ");
-      await updateSubagent({
+      updateSubagent({
         content: `Investigating... (${toolNames})`,
         thinking_state: "streaming",
-      });
+      }); // don't await
 
       messages.push({
         role: "assistant",
@@ -176,28 +159,34 @@ export async function runResearchSubagent(args: {
         tool_calls: fnCalls,
       });
 
-      for (const tc of fnCalls) {
-        const toolResult = await executeTool(
-          tc.function.name,
-          tc.function.arguments,
-          toolCtx
-        );
+      // Execute tools in parallel when possible
+      const toolResults = await Promise.all(
+        fnCalls.map(async (tc) => ({
+          id: tc.id,
+          result: await executeTool(tc.function.name, tc.function.arguments, toolCtx),
+        }))
+      );
+
+      for (const tr of toolResults) {
         messages.push({
           role: "tool",
-          content: toolResult,
-          tool_call_id: tc.id,
+          content: tr.result,
+          tool_call_id: tr.id,
         });
       }
     }
 
-    // Exhausted turn budget
-    if (lastStageInserted !== "Putting it all together...") {
-      await insertStatus("Putting it all together...");
-    }
+    // Exhausted turn budget -- force a final response without tools
+    insertStatus("Putting it all together..."); // don't await
+    const forcedResult = await callLlm({
+      messages: messages as unknown as Parameters<typeof callLlm>[0]["messages"],
+      // No tools -- force a text response
+    });
     const fallback =
+      forcedResult.content.trim() ||
       "I've checked a few options but need more time to narrow it down — try asking me something more specific.";
     await updateSubagent({ content: fallback, thinking_state: "done" });
-    return fallback;
+    return "";
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     console.error("runResearchSubagent failed:", msg);
@@ -214,6 +203,6 @@ export async function runResearchSubagent(args: {
       duration_ms: Date.now() - t0,
       model: null,
     });
-    return `Research agent failed: ${msg}`;
+    return "";
   }
 }

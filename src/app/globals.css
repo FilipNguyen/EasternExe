@@ -97,23 +97,29 @@
 /* Bot avatar animations */
 @keyframes float {
   0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-2px); }
-}
-
-@keyframes pulse-think {
-  0%, 100% { transform: scale(1) rotate(0deg); opacity: 1; }
-  50% { transform: scale(1.05) rotate(3deg); opacity: 0.85; }
-}
-
-@keyframes bounce-speak {
-  0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-3px); }
 }
 
+@keyframes pulse-think {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  25% { transform: scale(1.08) rotate(-5deg); }
+  50% { transform: scale(0.95) rotate(3deg); }
+  75% { transform: scale(1.05) rotate(-2deg); }
+}
+
+@keyframes bounce-speak {
+  0%, 100% { transform: translateY(0) scale(1); }
+  30% { transform: translateY(-5px) scale(1.1); }
+  60% { transform: translateY(1px) scale(0.95); }
+}
+
 @keyframes happy-pop {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.15); }
-  100% { transform: scale(1.05); }
+  0% { transform: scale(1) rotate(0deg); }
+  20% { transform: scale(1.2) rotate(-8deg); }
+  40% { transform: scale(1.15) rotate(5deg); }
+  60% { transform: scale(1.2) rotate(-3deg); }
+  80% { transform: scale(1.1) rotate(2deg); }
+  100% { transform: scale(1.05) rotate(0deg); }
 }
 
 @keyframes fade-in {

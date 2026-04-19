@@ -311,6 +311,24 @@ export async function runAgent(args: RunAgentArgs): Promise<void> {
           content: toolResult,
           tool_call_id: tc.id,
         });
+
+        // If research_activity was called, the subagent has already written
+        // its final answer directly to chat. Finalize our placeholder and exit.
+        if (tc.function.name === "research_activity" && !toolResult) {
+          await updatePlaceholder({
+            content: result.content?.trim() || "The Research Agent has posted its findings above.",
+            thinking_state: "done",
+          });
+          await supabase.from("ai_runs").insert({
+            trip_id: args.tripId,
+            kind: `agent.${mode}`,
+            input: { trigger: triggerMsg.content, turns: turn + 1 },
+            output: { content: "Delegated to research subagent" },
+            duration_ms: Date.now() - t0,
+            model: getZaiModel(),
+          });
+          return;
+        }
       }
     }
 

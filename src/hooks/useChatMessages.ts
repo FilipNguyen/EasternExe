@@ -19,11 +19,13 @@ interface SendArgs {
 }
 
 const INITIAL_LIMIT = 100;
+const POLL_INTERVAL_MS = 3000;
 
 export function useChatMessages(roomId: string | undefined) {
   const [messages, setMessages] = useState<OptimisticMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const mergedIds = useRef<Set<string>>(new Set());
+  const pollTimerRef = useRef<ReturnType<typeof setInterval>>();
 
   const mergeIn = useCallback((next: OptimisticMessage[]) => {
     setMessages((prev) => {
@@ -52,12 +54,37 @@ export function useChatMessages(roomId: string | undefined) {
     });
   }, []);
 
-  useEffect(() => {
+  // Fetch messages from the API
+  const fetchMessages = useCallback(async () => {
     if (!roomId) return;
+    try {
+      const res = await fetch(
+        `/api/messages?room_id=${roomId}&limit=${INITIAL_LIMIT}`,
+        { cache: "no-store" }
+      );
+      const body = (await res.json().catch(() => ({}))) as {
+        messages?: OptimisticMessage[];
+      };
+      if (body.messages) mergeIn(body.messages);
+    } catch (e) {
+      console.error("Failed to poll messages:", e);
+    }
+  }, [roomId, mergeIn]);
+
+  useEffect(() => {
+    if (!roomId) {
+      setMessages([]);
+      mergedIds.current = new Set();
+      return;
+    }
     let active = true;
     const supabase = getSupabaseBrowserClient();
+    // Reset state when switching rooms so messages from a previous room
+    // can't bleed into the new one via the merge-by-id state carry-over.
+    setMessages([]);
     mergedIds.current = new Set();
 
+    // Initial load
     (async () => {
       setLoading(true);
       try {
@@ -77,6 +104,7 @@ export function useChatMessages(roomId: string | undefined) {
       }
     })();
 
+    // Realtime subscription for instant updates
     const channel = supabase
       .channel(`chat:${roomId}`)
       .on(
@@ -99,13 +127,26 @@ export function useChatMessages(roomId: string | undefined) {
         },
         (payload) => mergeIn([payload.new as OptimisticMessage])
       )
-      .subscribe();
+      .subscribe((status) => {
+        // If realtime fails or is stuck at connecting, the polling fallback
+        // will keep things moving
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          console.warn("Realtime subscription issue, relying on polling:", status);
+        }
+      });
+
+    // Polling fallback: every 3 seconds, fetch latest messages.
+    // This ensures updates arrive even if realtime is not configured on the table.
+    pollTimerRef.current = setInterval(() => {
+      fetchMessages();
+    }, POLL_INTERVAL_MS);
 
     return () => {
       active = false;
       supabase.removeChannel(channel);
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
-  }, [roomId, mergeIn]);
+  }, [roomId, mergeIn, fetchMessages]);
 
   const send = useCallback(
     async ({
@@ -159,7 +200,16 @@ export function useChatMessages(roomId: string | undefined) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body.error ?? `Send failed (${res.status})`);
         }
-        // Realtime INSERT will deliver the canonical row; mergeIn dedupes.
+
+        // Immediately confirm by merging the server response.
+        // The POST returns the inserted message, so we can confirm right away
+        // without waiting for realtime.
+        const inserted = (await res.json().catch(() => ({}))) as {
+          message?: OptimisticMessage;
+        };
+        if (inserted.message) {
+          mergeIn([inserted.message]);
+        }
       } catch (e) {
         console.error("send failed:", e);
         setMessages((prev) =>
@@ -167,7 +217,7 @@ export function useChatMessages(roomId: string | undefined) {
         );
       }
     },
-    [roomId]
+    [roomId, mergeIn]
   );
 
   return { messages, loading, send } as const;

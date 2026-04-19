@@ -14,9 +14,9 @@ interface Props {
 
 const ANIMATION_CLASSES: Record<BotAvatarState, string> = {
   idle: "animate-[float_3s_ease-in-out_infinite]",
-  thinking: "animate-[pulse-think_2s_ease-in-out_infinite]",
-  speaking: "animate-[bounce-speak_0.6s_ease-in-out_infinite]",
-  happy: "animate-[happy-pop_0.5s_ease-out]",
+  thinking: "animate-[pulse-think_1.4s_ease-in-out_infinite]",
+  speaking: "animate-[bounce-speak_0.5s_ease-in-out_infinite]",
+  happy: "animate-[happy-pop_0.5s_ease-in-out_3]",
 };
 
 export function BotAvatar({ state = "idle", size = 28, className }: Props) {
