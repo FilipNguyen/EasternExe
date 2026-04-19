@@ -22,7 +22,6 @@ interface Props {
 export function PlaceResultCard({ place, tripId, onSaved }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
-  const [photoUrl] = useState<string | null>(null);
   const [photoFailed, setPhotoFailed] = useState(false);
 
   const categoryColor =
@@ -30,13 +29,12 @@ export function PlaceResultCard({ place, tripId, onSaved }: Props) {
   const categoryLabel =
     CATEGORY_LABELS[place.category as keyof typeof CATEGORY_LABELS] ?? place.category;
 
-  // Try to load photo via Google Places Photo proxy (only if we have a google_place_id)
-  useState(() => {
-    if (place.place_id) {
-      // We don't have an internal place ID yet, so we'll skip the photo
-      // until the place is saved. For now, show the category color as fallback.
-    }
-  });
+  // Photo served by our proxy route, which talks to Google Places directly
+  // using the google_place_id. The <img> onError fallback handles places
+  // without photos or missing place_id.
+  const photoUrl = place.place_id
+    ? `/api/google-places/photo?id=${encodeURIComponent(place.place_id)}&w=640`
+    : null;
 
   const handleAddToMap = async () => {
     if (saving || saved) return;

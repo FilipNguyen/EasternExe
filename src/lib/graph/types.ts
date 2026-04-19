@@ -6,7 +6,8 @@ export type KGNodeKind =
   | "question"
   | "constraint"
   | "preference"
-  | "tension";
+  | "tension"
+  | "topic";
 
 export type KGRelation =
   | "PART_OF"

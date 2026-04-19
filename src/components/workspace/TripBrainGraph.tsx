@@ -29,6 +29,7 @@ const KIND_COLOR: Record<string, string> = {
   constraint: "#ef4444",
   preference: "#06b6d4",
   tension: "#ec4899",
+  topic: "#facc15",
 };
 
 const LAYER_SPACING = 80; // distance between day layers on the z-axis
@@ -320,8 +321,28 @@ export function TripBrainGraph({ trip }: { trip: Trip }) {
               const hot = latestActivationByNode.has(srcId);
               return hot ? "rgba(251,191,36,0.85)" : "rgba(148,163,184,0.35)";
             }}
-            cooldownTicks={150}
-            warmupTicks={40}
+            // Tighter cooldown so the sim settles quickly instead of endlessly
+            // drifting. d3VelocityDecay = friction; d3AlphaDecay speeds the
+            // cool-down; d3AlphaMin stops the sim earlier than the default.
+            cooldownTicks={120}
+            warmupTicks={30}
+            d3AlphaDecay={0.06}
+            d3AlphaMin={0.02}
+            d3VelocityDecay={0.55}
+            // When the sim stops, pin every node in place. Dragging a node
+            // still works (react-force-graph repins on drop), but nothing
+            // drifts passively any more.
+            onEngineStop={() => {
+              const fg = fgRef.current as unknown as
+                | { graphData?: () => { nodes: Array<{ x: number; y: number; fx?: number; fy?: number }> } }
+                | undefined;
+              const data = fg?.graphData?.();
+              if (!data) return;
+              for (const n of data.nodes) {
+                if (typeof n.x === "number") n.fx = n.x;
+                if (typeof n.y === "number") n.fy = n.y;
+              }
+            }}
             showNavInfo={false}
           />
         )}
@@ -462,6 +483,7 @@ function WikiPanel({
 function Legend() {
   const kinds: { kind: string; label: string }[] = [
     { kind: "trip", label: "Trip" },
+    { kind: "topic", label: "Topics" },
     { kind: "person", label: "People" },
     { kind: "place", label: "Places" },
     { kind: "decision", label: "Decisions" },

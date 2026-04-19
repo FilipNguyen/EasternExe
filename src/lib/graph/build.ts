@@ -44,6 +44,101 @@ function slug(text: string): string {
     .slice(0, 64);
 }
 
+/**
+ * Fixed topic vocabulary + keyword heuristics. Pick the first topic whose
+ * pattern hits; fall back to null (no topic edge) so we don't over-attach.
+ */
+const TOPICS: {
+  id: string;
+  label: string;
+  pattern: RegExp;
+}[] = [
+  {
+    id: "food",
+    label: "Food",
+    pattern:
+      /\b(food|eat|eating|restaurant|dinner|lunch|breakfast|brunch|ramen|sushi|pho|banh|laksa|dumpling|bbq|burger|pizza|bakery|pastry|dim sum|cuisine|chef|menu|michelin|omakase|pie|mash|curry|noodle|taco|buffet|dish|meal|kitchen)\b/i,
+  },
+  {
+    id: "drinks",
+    label: "Drinks & Bars",
+    pattern:
+      /\b(drink|drinks|cocktail|wine|whisky|whiskey|bar\b|beer|pint|pub|ale|lager|cider|mezcal|gin|vodka|bourbon|natural wine|sommelier)\b/i,
+  },
+  {
+    id: "nightlife",
+    label: "Nightlife",
+    pattern:
+      /\b(nightlife|club|jazz|live music|dj|late-night|night out|dancing|karaoke)\b/i,
+  },
+  {
+    id: "sight",
+    label: "Sights & Culture",
+    pattern:
+      /\b(sight|museum|gallery|art|exhibit|cultural|history|historic|temple|shrine|palace|castle|tower|cathedral|architecture|landmark|viewpoint|v&a|tate|british museum)\b/i,
+  },
+  {
+    id: "shopping",
+    label: "Shopping",
+    pattern:
+      /\b(shop|shopping|market|boutique|store|souvenir|vintage|flea|flower market|outlet)\b/i,
+  },
+  {
+    id: "nature",
+    label: "Nature & Outdoors",
+    pattern:
+      /\b(park|garden|nature|hike|trail|walk|river|waterfront|beach|outdoor|green|forest)\b/i,
+  },
+  {
+    id: "logistics",
+    label: "Travel & Logistics",
+    pattern:
+      /\b(flight|airline|airport|airbnb|hotel|room|check-in|check in|taxi|tube|train|transfer|pass|adapter|baggage|arrival|departure|landing|transit|contactless|oyster)\b/i,
+  },
+  {
+    id: "schedule",
+    label: "Schedule",
+    pattern:
+      /\b(date|dates|schedule|day|morning|afternoon|evening|night\b|booking|reservation|booked|reserved|slot|time)\b/i,
+  },
+  {
+    id: "budget",
+    label: "Budget",
+    pattern:
+      /\b(budget|£\d|\$\d|cost|price|cheap|expensive|splurge|pp\b|per person|afford|reasonable|mid-range)\b/i,
+  },
+  {
+    id: "dietary",
+    label: "Diet & Allergies",
+    pattern:
+      /\b(allerg|pescatarian|vegetarian|vegan|gluten|lactose|dairy|peanut|shellfish|halal|kosher|dealbreaker|diet)\b/i,
+  },
+];
+
+function inferTopic(text: string): string | null {
+  for (const t of TOPICS) if (t.pattern.test(text)) return t.id;
+  return null;
+}
+
+function placeCategoryToTopic(category: string | null | undefined): string | null {
+  switch (category) {
+    case "food":
+      return "food";
+    case "drinks":
+      return "drinks";
+    case "nightlife":
+      return "nightlife";
+    case "sight":
+      return "sight";
+    case "shopping":
+      return "shopping";
+    case "nature":
+      return "nature";
+    default:
+      return null;
+  }
+}
+
 function collectPending(args: {
   trip: Trip;
   participants: Participant[];
@@ -53,6 +148,24 @@ function collectPending(args: {
 }): { nodes: PendingNode[]; edges: PendingEdge[] } {
   const nodes: PendingNode[] = [];
   const edges: PendingEdge[] = [];
+  const topicsUsed = new Set<string>();
+
+  const topicOriginOf = (topicId: string) => `topic:${topicId}`;
+
+  const attachTopic = (
+    subjectOrigin: string,
+    text: string,
+    fallbackTopic?: string | null
+  ) => {
+    const topic = inferTopic(text) ?? fallbackTopic ?? null;
+    if (!topic) return;
+    topicsUsed.add(topic);
+    edges.push({
+      src_origin: subjectOrigin,
+      dst_origin: topicOriginOf(topic),
+      relation: "ABOUT",
+    });
+  };
 
   // 1. Trip hub
   const tripOrigin = `trip:${args.trip.id}`;
@@ -70,7 +183,9 @@ function collectPending(args: {
     origin_id: tripOrigin,
   });
 
-  // 2. Person nodes + PART_OF edge
+  // 2. Person nodes — kept connected to trip only. No per-person preference
+  // nodes; individual likes now flow into topic hubs to avoid per-person
+  // clustering in the force layout.
   const profileByParticipant = new Map(
     args.profiles.map((p) => [p.participant_id, p])
   );
@@ -96,50 +211,9 @@ function collectPending(args: {
       relation: "PART_OF",
     });
 
-    // Per-person preferences (interests + food_preferences)
-    const likeItems = [
-      ...(profile?.interests ?? []).map((x) => ({ text: x, kind: "interest" })),
-      ...(profile?.food_preferences ?? []).map((x) => ({
-        text: x,
-        kind: "food",
-      })),
-    ];
-    for (const item of likeItems) {
-      const prefOrigin = `pref:${item.kind}:${slug(item.text)}`;
-      nodes.push({
-        kind: "preference",
-        label: item.text,
-        properties: { kind: item.kind },
-        importance: 0.4,
-        origin_table: "derived",
-        origin_id: prefOrigin,
-      });
-      edges.push({
-        src_origin: personOrigin,
-        dst_origin: prefOrigin,
-        relation: "PREFERS",
-      });
-    }
-
-    // Per-person dislikes → dislike preferences
-    for (const d of profile?.dislikes ?? []) {
-      const prefOrigin = `pref:dislike:${slug(d)}`;
-      nodes.push({
-        kind: "preference",
-        label: d,
-        properties: { kind: "dislike" },
-        importance: 0.5,
-        origin_table: "derived",
-        origin_id: prefOrigin,
-      });
-      edges.push({
-        src_origin: personOrigin,
-        dst_origin: prefOrigin,
-        relation: "DISLIKES",
-      });
-    }
-
-    // Per-person dealbreakers → hard constraints
+    // Dealbreakers still produce constraint nodes, but attach to the dietary
+    // topic rather than to the person individually — keeps the graph honest
+    // about hard constraints without per-person gravity wells.
     for (const db of profile?.dealbreakers ?? []) {
       const cOrigin = `constraint:${slug(db)}`;
       nodes.push({
@@ -150,19 +224,21 @@ function collectPending(args: {
         origin_table: "derived",
         origin_id: cOrigin,
       });
-      // Heuristic: if the text mentions allergy, use ALLERGIC_TO; else DISLIKES
-      const rel: KGRelation = /allerg|intoleran/i.test(db)
-        ? "ALLERGIC_TO"
-        : "DISLIKES";
       edges.push({
-        src_origin: personOrigin,
+        src_origin: tripOrigin,
         dst_origin: cOrigin,
-        relation: rel,
+        relation: "CONSTRAINED_BY",
       });
+      attachTopic(cOrigin, db, "dietary");
     }
+
+    // Person → topic edges based on budget_style / travel_style keywords.
+    if (profile?.budget_style) attachTopic(personOrigin, profile.budget_style, "budget");
+    if (profile?.travel_style) attachTopic(personOrigin, profile.travel_style);
   }
 
-  // 3. Place nodes + PROPOSED edges
+  // 3. Place nodes → ABOUT → topic hub. PROPOSED edges dropped so the force
+  // layout no longer orbits each place around its champion.
   for (const place of args.places) {
     const placeOrigin = `place:${place.id}`;
     nodes.push({
@@ -180,16 +256,22 @@ function collectPending(args: {
       origin_table: "places",
       origin_id: placeOrigin,
     });
-    if (place.added_by) {
+    const placeTopic = placeCategoryToTopic(place.category);
+    if (placeTopic) {
+      topicsUsed.add(placeTopic);
       edges.push({
-        src_origin: `person:${place.added_by}`,
-        dst_origin: placeOrigin,
-        relation: "PROPOSED",
+        src_origin: placeOrigin,
+        dst_origin: topicOriginOf(placeTopic),
+        relation: "ABOUT",
       });
+    } else {
+      // If there's no category, fall back to keyword inference on the name.
+      attachTopic(placeOrigin, place.name);
     }
   }
 
-  // 4. Trip-level constraints / decisions / questions / tensions / group prefs
+  // 4. Trip-memory items — connect to trip hub (so rebuild doesn't orphan
+  // them) AND to their inferred topic so topic clusters pull them together.
   if (args.memory) {
     const m = args.memory;
     for (const c of m.constraints ?? []) {
@@ -207,6 +289,7 @@ function collectPending(args: {
         dst_origin: cOrigin,
         relation: "CONSTRAINED_BY",
       });
+      attachTopic(cOrigin, c);
     }
     for (const d of m.decisions_made ?? []) {
       const dOrigin = `decision:${slug(d)}`;
@@ -223,6 +306,7 @@ function collectPending(args: {
         dst_origin: dOrigin,
         relation: "DECIDED",
       });
+      attachTopic(dOrigin, d);
     }
     for (const q of m.open_questions ?? []) {
       const qOrigin = `question:${slug(q)}`;
@@ -239,6 +323,7 @@ function collectPending(args: {
         dst_origin: qOrigin,
         relation: "ASKING",
       });
+      attachTopic(qOrigin, q);
     }
     for (const gp of m.group_preferences ?? []) {
       const pOrigin = `pref:group:${slug(gp)}`;
@@ -255,6 +340,7 @@ function collectPending(args: {
         dst_origin: pOrigin,
         relation: "SUPPORTS",
       });
+      attachTopic(pOrigin, gp);
     }
     for (const t of m.tensions ?? []) {
       const tOrigin = `tension:${slug(t)}`;
@@ -271,7 +357,29 @@ function collectPending(args: {
         dst_origin: tOrigin,
         relation: "TENSION_BETWEEN",
       });
+      attachTopic(tOrigin, t);
     }
+  }
+
+  // 5. Emit topic hub nodes for every topic that was referenced. Connect
+  // each topic to the trip so they sit near the root rather than floating.
+  for (const topicId of topicsUsed) {
+    const meta = TOPICS.find((t) => t.id === topicId);
+    if (!meta) continue;
+    const tOrigin = topicOriginOf(topicId);
+    nodes.push({
+      kind: "topic",
+      label: meta.label,
+      properties: { id: topicId },
+      importance: 0.75,
+      origin_table: "derived",
+      origin_id: tOrigin,
+    });
+    edges.push({
+      src_origin: tOrigin,
+      dst_origin: tripOrigin,
+      relation: "PART_OF",
+    });
   }
 
   return { nodes, edges };
