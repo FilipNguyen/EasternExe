@@ -327,6 +327,7 @@ export async function runAgent(args: RunAgentArgs): Promise<void> {
           participantsJson: JSON.stringify(profilesForPrompt, null, 2),
           recentMessages: historyForPrompt,
           ragChunks,
+          digestsBlock,
         })
       );
     } else {
@@ -382,6 +383,7 @@ export async function runAgent(args: RunAgentArgs): Promise<void> {
           groupRecentMessages: groupRecent,
           privateRecentMessages: historyForPrompt,
           ragChunks,
+          digestsBlock,
         })
       );
     }

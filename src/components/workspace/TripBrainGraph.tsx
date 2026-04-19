@@ -547,6 +547,7 @@ export function TripBrainGraph({ trip }: { trip: Trip }) {
                         fx?: number;
                         fy?: number;
                         fz?: number;
+                        dayIndex?: number;
                       }>;
                     };
                   }
@@ -555,10 +556,6 @@ export function TripBrainGraph({ trip }: { trip: Trip }) {
               if (!data) return;
               for (const n of data.nodes) {
                 if (typeof n.x !== "number" || typeof n.y !== "number") continue;
-                // Pin the live node so d3-force can't move it further, AND
-                // remember it in the ref so that the next time we recompute
-                // graphNodes (e.g. because an unrelated setState fired) we
-                // can re-apply fx/fy/fz to the fresh objects.
                 n.fx = n.x;
                 n.fy = n.y;
                 if (typeof n.z === "number") n.fz = n.z;
@@ -566,6 +563,7 @@ export function TripBrainGraph({ trip }: { trip: Trip }) {
                   x: n.x,
                   y: n.y,
                   z: typeof n.z === "number" ? n.z : 0,
+                  dayIndex: typeof n.dayIndex === "number" ? n.dayIndex : -1,
                 });
               }
             }}

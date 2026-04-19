@@ -100,14 +100,17 @@ export function MessageBubble({
   const isAgent = message.sender_type === "agent";
   const isSubagent = message.sender_type === "subagent";
   const isSystem = message.sender_type === "system";
+  const shared = !!message.shared_from_room_id;
+  // Shared messages carry the original bot content — lay them out like a bot
+  // reply (left, with a sparkle avatar) instead of a right-side "mine" bubble.
   const mine =
-    isUser && message.sender_participant_id === currentParticipantId;
+    isUser &&
+    !shared &&
+    message.sender_participant_id === currentParticipantId;
 
   const sender = message.sender_participant_id
     ? participants[message.sender_participant_id]
     : undefined;
-
-  const shared = !!message.shared_from_room_id;
 
   // Parse :::places blocks from agent/subagent messages AND shared messages
   // (which are re-inserted as sender_type='user' but carry the original bot
@@ -191,14 +194,18 @@ export function MessageBubble({
         <div
           className={cn(
             "rounded-2xl px-3.5 py-2 text-sm leading-relaxed",
-            mine
-              ? "bg-primary text-primary-foreground"
-              : isAgent
-                ? "bg-muted text-foreground"
-                : isSubagent
-                  ? "border-l-4 border-violet-500 bg-violet-50 text-foreground dark:bg-violet-950/40"
-                  : "bg-secondary text-secondary-foreground",
-            shared ? "border-l-4 border-violet-500" : "",
+            // `shared` wins over `mine` — a re-broadcast carries bot-generated
+            // content, so it must be readable for everyone including the sharer.
+            // Using the `mine` primary bubble turned body copy into dark-on-dark.
+            shared
+              ? "border-l-4 border-violet-500 bg-violet-50 text-foreground dark:bg-violet-950/40 dark:text-foreground"
+              : mine
+                ? "bg-primary text-primary-foreground"
+                : isAgent
+                  ? "bg-muted text-foreground"
+                  : isSubagent
+                    ? "border-l-4 border-violet-500 bg-violet-50 text-foreground dark:bg-violet-950/40"
+                    : "bg-secondary text-secondary-foreground",
             message.optimistic ? "opacity-50" : "opacity-100",
             message.failed ? "border border-destructive" : "",
             message.thinking_state === "failed"
