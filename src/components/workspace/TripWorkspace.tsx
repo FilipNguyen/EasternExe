@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 
 import { ChatInput } from "@/components/chat/ChatInput";
 import { MessageList } from "@/components/chat/MessageList";
@@ -11,6 +12,7 @@ import { TripBrainPanel } from "@/components/workspace/TripBrainPanel";
 import { TripInfoPanel } from "@/components/workspace/TripInfoPanel";
 import { NearbyPanel } from "@/components/workspace/NearbyPanel";
 import { EventsPanel } from "@/components/workspace/EventsPanel";
+import { AddContextPanel } from "@/components/workspace/AddContextPanel";
 import { TripMap } from "@/components/map/TripMap";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useChatInactivityWatcher } from "@/hooks/useChatInactivityWatcher";
@@ -35,6 +37,7 @@ export function TripWorkspace({
   const router = useRouter();
   const { participantId, hydrated } = useParticipant(initialTrip.id);
   const [tab, setTab] = useState<WorkspaceTab>("group");
+  const [addOpen, setAddOpen] = useState(false);
 
   const { trip: liveTrip, uploads } = useTripStatus(initialTrip.id, initialTrip);
   const trip = liveTrip ?? initialTrip;
@@ -120,22 +123,39 @@ export function TripWorkspace({
               {trip.status !== "ready" ? ` · ${trip.status}` : ""}
             </div>
           </div>
-          {me ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">
-                {me.display_name}
-              </span>
-              <div
-                className="flex size-7 items-center justify-center rounded-full text-xs font-semibold text-white"
-                style={{ backgroundColor: me.color }}
-                aria-hidden
-              >
-                {me.display_name.charAt(0).toUpperCase()}
-              </div>
-            </div>
-          ) : null}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setAddOpen(true)}
+              className="inline-flex items-center gap-1 rounded-md border bg-background px-2 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+              aria-label="Add context"
+            >
+              <Plus className="size-3.5" />
+              Add
+            </button>
+            {me ? (
+              <>
+                <span className="text-xs text-muted-foreground">
+                  {me.display_name}
+                </span>
+                <div
+                  className="flex size-7 items-center justify-center rounded-full text-xs font-semibold text-white"
+                  style={{ backgroundColor: me.color }}
+                  aria-hidden
+                >
+                  {me.display_name.charAt(0).toUpperCase()}
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
       </header>
+      {addOpen ? (
+        <AddContextPanel
+          tripId={trip.id}
+          onClose={() => setAddOpen(false)}
+        />
+      ) : null}
 
       <TabsShell active={tab} onChange={setTab} />
 

@@ -18,6 +18,7 @@ import {
   agentPrivateContext,
   agentPrivateSystem,
 } from "@/lib/prompts/agent-private";
+import { computeGraphInMemory } from "@/lib/graph/build";
 import { serializeGraph } from "@/lib/graph/serialize";
 import type { KGEdge, KGNode } from "@/lib/graph/types";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -32,6 +33,8 @@ import type {
 
 const HISTORY_LIMIT = 20;
 const MAX_TURNS = 5;
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function getTimeOfDay(): string {
   const hour = new Date().getHours();
@@ -93,15 +96,48 @@ export async function runAgent(args: RunAgentArgs): Promise<void> {
       .eq("id", runId);
   };
 
-  const recordActivations = async (nodeIds: string[], reason: string) => {
+  // Activations are ephemeral UI events — ship them via Supabase Realtime
+  // broadcast (no table required, no migration dependency). The client's
+  // useActivations hook subscribes to the same channel and lights up the
+  // matching nodes for ~1.8s.
+  const activationChannel = supabase.channel(`graph-activations:${args.tripId}`, {
+    config: { broadcast: { self: false } },
+  });
+  let channelReady: Promise<void> | null = null;
+  const ensureChannel = (): Promise<void> => {
+    if (!channelReady) {
+      channelReady = new Promise((resolve) => {
+        activationChannel.subscribe((status) => {
+          if (status === "SUBSCRIBED") resolve();
+        });
+        // Hard cap so a flaky channel doesn't block the agent
+        setTimeout(resolve, 1500);
+      });
+    }
+    return channelReady;
+  };
+
+  const broadcastActivations = async (
+    nodeIds: string[],
+    reason: string
+  ): Promise<void> => {
     if (!runId || nodeIds.length === 0) return;
-    const rows = nodeIds.map((node_id) => ({
-      trip_id: args.tripId,
-      run_id: runId,
-      node_id,
-      reason,
-    }));
-    await supabase.from("agent_run_activations").insert(rows);
+    try {
+      await ensureChannel();
+      await activationChannel.send({
+        type: "broadcast",
+        event: "activate",
+        payload: {
+          trip_id: args.tripId,
+          run_id: runId,
+          node_ids: nodeIds,
+          reason,
+          at: new Date().toISOString(),
+        },
+      });
+    } catch (e) {
+      console.warn("broadcast failed (non-fatal):", e);
+    }
   };
 
   try {
@@ -178,33 +214,43 @@ export async function runAgent(args: RunAgentArgs): Promise<void> {
       ragChunks = concatChunks(chunks, 5000);
     }
 
-    // Knowledge graph — serialize and include in the system prompt so the
-    // agent sees the compiled trip brain instead of re-deriving it from
-    // raw chunks each turn. Each touched node is written as an activation
-    // so the viz can light up what fed into this run.
-    const [{ data: kgNodesData }, { data: kgEdgesData }] = await Promise.all([
-      supabase
-        .from("kg_nodes")
-        .select("*")
-        .eq("trip_id", args.tripId)
-        .is("invalidated_at", null),
-      supabase
-        .from("kg_edges")
-        .select("*")
-        .eq("trip_id", args.tripId)
-        .is("invalidated_at", null),
-    ]);
-    const kgNodes = (kgNodesData ?? []) as KGNode[];
-    const kgEdges = (kgEdgesData ?? []) as KGEdge[];
+    // Knowledge graph — compute on the fly from source tables (no
+    // kg_nodes/kg_edges tables needed). Serialize into the prompt so the
+    // agent sees the compiled trip brain, and broadcast the node IDs it
+    // consumed so the viz lights them up in real time.
+    const { nodes: kgNodes, edges: kgEdges } = await computeGraphInMemory(
+      supabase,
+      args.tripId
+    );
     const graphDigest =
       kgNodes.length > 0
-        ? serializeGraph(kgNodes, kgEdges, { maxPerKind: 25 })
+        ? serializeGraph(
+            kgNodes as unknown as KGNode[],
+            kgEdges as unknown as KGEdge[],
+            { maxPerKind: 25 }
+          )
         : "";
     if (kgNodes.length > 0) {
-      await recordActivations(
-        kgNodes.map((n) => n.id),
-        "Included in trip-brain context"
-      );
+      // Phased waves so the viz cascades visibly as the agent reads the brain.
+      // 1) Trip hub + participants, 2) constraints + preferences, 3) decisions
+      //    + questions + tensions, 4) places. ~120ms between waves.
+      const orderGroups = [
+        new Set(["trip", "person"]),
+        new Set(["constraint", "preference"]),
+        new Set(["decision", "question", "tension"]),
+        new Set(["place"]),
+      ];
+      for (let i = 0; i < orderGroups.length; i++) {
+        const wave = kgNodes
+          .filter((n) => orderGroups[i].has(n.kind))
+          .map((n) => n.id);
+        if (wave.length === 0) continue;
+        await broadcastActivations(
+          wave,
+          `Wave ${i + 1} · ${Array.from(orderGroups[i]).join("/")}`
+        );
+        if (i < orderGroups.length - 1) await sleep(120);
+      }
     }
 
     // Decide mode and build system prompt

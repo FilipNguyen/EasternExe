@@ -3,7 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { callLlmJson, getZaiModel } from "@/lib/llm";
-import { rebuildGraph } from "@/lib/graph/build";
+import { computeGraphInMemory } from "@/lib/graph/build";
 import type { ChatMessage, Participant, TripMemory } from "@/types/db";
 
 /**
@@ -189,8 +189,9 @@ export async function summarizeChatIntoGraph(
       { onConflict: "trip_id" }
     );
 
-    // Rebuild the graph from the newly-updated memory + existing places/profiles
-    await rebuildGraph(supabase, tripId);
+    // Warm the derivation (and catch any source-data errors early). Graph is
+    // a live projection — no writes needed.
+    await computeGraphInMemory(supabase, tripId);
 
     const { data: runRow } = await supabase
       .from("ai_runs")

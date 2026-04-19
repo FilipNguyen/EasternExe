@@ -10,6 +10,12 @@ export async function GET(
   { params }: { params: { tripId: string } }
 ) {
   const supabase = getSupabaseServerClient();
+  const { data: trippers } = await supabase
+    .from("participants")
+    .select("id")
+    .eq("trip_id", params.tripId);
+  const participantIds = (trippers ?? []).map((p) => p.id as string);
+
   const [{ data: memory }, { data: places }, { data: profiles }] =
     await Promise.all([
       supabase
@@ -21,11 +27,14 @@ export async function GET(
         .from("places")
         .select("id,category,status")
         .eq("trip_id", params.tripId),
-      supabase
-        .from("participant_profiles")
-        .select(
-          "participant_id,personality,interests,travel_style,food_preferences,dealbreakers"
-        ),
+      participantIds.length > 0
+        ? supabase
+            .from("participant_profiles")
+            .select(
+              "participant_id,personality,interests,travel_style,food_preferences,dealbreakers"
+            )
+            .in("participant_id", participantIds)
+        : Promise.resolve({ data: [] }),
     ]);
 
   const byCategory: Record<string, number> = {};

@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { KGEdge, KGNode } from "@/lib/graph/types";
 
+// Graph is derived on the server from trip_memory + profiles + places and
+// recomputed on every request. Polling every 10s + a manual rebuild button
+// keeps it fresh without a Realtime subscription on nonexistent tables.
 const POLL_INTERVAL_MS = 10000;
 
 export function useTripGraph(tripId: string | undefined) {
@@ -46,7 +48,6 @@ export function useTripGraph(tripId: string | undefined) {
       setEdges([]);
       return;
     }
-    const supabase = getSupabaseBrowserClient();
     let active = true;
 
     (async () => {
@@ -55,35 +56,10 @@ export function useTripGraph(tripId: string | undefined) {
       if (active) setLoading(false);
     })();
 
-    const channel = supabase
-      .channel(`kg:${tripId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "kg_nodes",
-          filter: `trip_id=eq.${tripId}`,
-        },
-        () => fetchAll()
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "kg_edges",
-          filter: `trip_id=eq.${tripId}`,
-        },
-        () => fetchAll()
-      )
-      .subscribe();
-
     pollRef.current = setInterval(fetchAll, POLL_INTERVAL_MS);
 
     return () => {
       active = false;
-      supabase.removeChannel(channel);
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, [tripId, fetchAll]);

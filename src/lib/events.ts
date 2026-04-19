@@ -10,6 +10,8 @@ export interface EventResult {
   url: string | null;
   dates: string | null;
   category: string;
+  thumbnail_url?: string;
+  source_host?: string;
 }
 
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
@@ -117,6 +119,8 @@ export async function searchWebEvents(
         url: r.url,
         dates: monthYear,
         category: "other",
+        thumbnail_url: r.thumbnail_url,
+        source_host: r.source_host,
       });
     }
   }

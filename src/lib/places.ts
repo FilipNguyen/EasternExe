@@ -95,6 +95,9 @@ export interface NearbySearchResult {
   rating?: number;
   user_ratings_total?: number;
   primary_type?: string;
+  primary_type_label?: string;
+  price_level?: string;
+  editorial_summary?: string;
   types?: string[];
 }
 
@@ -128,7 +131,7 @@ export async function googlePlacesNearbySearch(
           "content-type": "application/json",
           "X-Goog-Api-Key": apiKey,
           "X-Goog-FieldMask":
-            "places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.primaryType,places.types",
+            "places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.primaryType,places.primaryTypeDisplayName,places.priceLevel,places.editorialSummary,places.types",
         },
         body: JSON.stringify({
           locationRestriction: {
@@ -155,6 +158,9 @@ export async function googlePlacesNearbySearch(
         rating?: number;
         userRatingCount?: number;
         primaryType?: string;
+        primaryTypeDisplayName?: { text?: string };
+        priceLevel?: string;
+        editorialSummary?: { text?: string };
         types?: string[];
       }[];
     };
@@ -169,6 +175,9 @@ export async function googlePlacesNearbySearch(
         rating: p.rating,
         user_ratings_total: p.userRatingCount,
         primary_type: p.primaryType,
+        primary_type_label: p.primaryTypeDisplayName?.text,
+        price_level: p.priceLevel,
+        editorial_summary: p.editorialSummary?.text,
         types: p.types,
       }));
   } catch (e) {

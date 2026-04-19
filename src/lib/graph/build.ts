@@ -67,7 +67,7 @@ function collectPending(args: {
     },
     importance: 1.0,
     origin_table: "trips",
-    origin_id: args.trip.id,
+    origin_id: tripOrigin,
   });
 
   // 2. Person nodes + PART_OF edge
@@ -88,7 +88,7 @@ function collectPending(args: {
       },
       importance: 0.9,
       origin_table: "participants",
-      origin_id: p.id,
+      origin_id: personOrigin,
     });
     edges.push({
       src_origin: personOrigin,
@@ -178,7 +178,7 @@ function collectPending(args: {
       },
       importance: 0.6,
       origin_table: "places",
-      origin_id: place.id,
+      origin_id: placeOrigin,
     });
     if (place.added_by) {
       edges.push({
@@ -277,34 +277,57 @@ function collectPending(args: {
   return { nodes, edges };
 }
 
-/** Wipe and rebuild the graph for a single trip. */
-export async function rebuildGraph(
+interface InMemoryNode {
+  id: string; // = origin_id, stable across rebuilds
+  trip_id: string;
+  kind: KGNodeKind;
+  label: string;
+  properties: Record<string, unknown>;
+  importance: number;
+  confidence: "provisional" | "confirmed" | "disputed";
+  origin_table: string;
+  origin_id: string;
+  invalidated_at: null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface InMemoryEdge {
+  id: string; // synthetic: src|dst|relation
+  trip_id: string;
+  src_id: string;
+  dst_id: string;
+  relation: KGRelation;
+  weight: number;
+  confidence: "provisional";
+  properties: Record<string, unknown>;
+  source_message_id: null;
+  invalidated_at: null;
+  created_at: string;
+}
+
+/**
+ * Compute the graph in memory from source tables. No writes. Deterministic:
+ * same source data always produces the same (id, label, edges).
+ *
+ * This is what the graph API returns — we treat the graph as a derived view,
+ * not a stored artifact. Consequence: no migration 005 needed. Cost: we
+ * recompute per request, ~5–50ms at trip scale.
+ */
+export async function computeGraphInMemory(
   supabase: SupabaseClient,
   tripId: string
-): Promise<{ nodeCount: number; edgeCount: number }> {
-  const [tripRes, participantsRes, profilesRes, placesRes, memoryRes] =
-    await Promise.all([
-      supabase.from("trips").select("*").eq("id", tripId).single(),
-      supabase.from("participants").select("*").eq("trip_id", tripId),
-      supabase
-        .from("participant_profiles")
-        .select("*")
-        .in(
-          "participant_id",
-          (
-            await supabase
-              .from("participants")
-              .select("id")
-              .eq("trip_id", tripId)
-          ).data?.map((p) => p.id) ?? []
-        ),
-      supabase.from("places").select("*").eq("trip_id", tripId),
-      supabase
-        .from("trip_memory")
-        .select("*")
-        .eq("trip_id", tripId)
-        .maybeSingle(),
-    ]);
+): Promise<{ nodes: InMemoryNode[]; edges: InMemoryEdge[] }> {
+  const [tripRes, participantsRes, placesRes, memoryRes] = await Promise.all([
+    supabase.from("trips").select("*").eq("id", tripId).single(),
+    supabase.from("participants").select("*").eq("trip_id", tripId),
+    supabase.from("places").select("*").eq("trip_id", tripId),
+    supabase
+      .from("trip_memory")
+      .select("*")
+      .eq("trip_id", tripId)
+      .maybeSingle(),
+  ]);
 
   if (tripRes.error || !tripRes.data) {
     throw new Error(`Trip ${tripId} not found`);
@@ -312,9 +335,17 @@ export async function rebuildGraph(
 
   const trip = tripRes.data as Trip;
   const participants = (participantsRes.data ?? []) as Participant[];
-  const profiles = (profilesRes.data ?? []) as ParticipantProfile[];
   const places = (placesRes.data ?? []) as Place[];
   const memory = (memoryRes.data ?? null) as TripMemory | null;
+
+  const { data: profilesData } = await supabase
+    .from("participant_profiles")
+    .select("*")
+    .in(
+      "participant_id",
+      participants.map((p) => p.id)
+    );
+  const profiles = (profilesData ?? []) as ParticipantProfile[];
 
   const { nodes: pendingNodes, edges: pendingEdges } = collectPending({
     trip,
@@ -324,15 +355,13 @@ export async function rebuildGraph(
     memory,
   });
 
-  // Dedupe nodes by origin_id (some origins appear twice — e.g. same
-  // dealbreaker from two people)
+  // Dedupe nodes by origin_id, keeping the highest importance.
   const nodesByOrigin = new Map<string, PendingNode>();
   for (const n of pendingNodes) {
     const existing = nodesByOrigin.get(n.origin_id);
     if (!existing) {
       nodesByOrigin.set(n.origin_id, n);
     } else {
-      // Merge: keep the higher importance + union properties
       existing.importance = Math.max(
         existing.importance ?? 0.5,
         n.importance ?? 0.5
@@ -340,64 +369,69 @@ export async function rebuildGraph(
     }
   }
 
-  // Wipe existing graph for this trip (cascades delete activations too —
-  // fine for rough version; user won't rebuild during an active @agent turn)
-  await supabase.from("kg_edges").delete().eq("trip_id", tripId);
-  await supabase.from("kg_nodes").delete().eq("trip_id", tripId);
-
-  // Insert nodes in a single batch
-  const nodeRows = Array.from(nodesByOrigin.values()).map((n) => ({
+  const now = new Date().toISOString();
+  const nodes: InMemoryNode[] = Array.from(nodesByOrigin.values()).map((n) => ({
+    id: n.origin_id,
     trip_id: tripId,
     kind: n.kind,
     label: n.label,
     properties: n.properties ?? {},
     importance: n.importance ?? 0.5,
+    confidence: "provisional",
     origin_table: n.origin_table,
     origin_id: n.origin_id,
+    invalidated_at: null,
+    created_at: tripCreatedAtFor(n, trip, places, memory),
+    updated_at: now,
   }));
-  const { data: insertedNodes, error: insertErr } = await supabase
-    .from("kg_nodes")
-    .insert(nodeRows)
-    .select("id, origin_id");
-  if (insertErr) throw new Error(`Node insert failed: ${insertErr.message}`);
 
-  const idByOrigin = new Map(
-    (insertedNodes ?? []).map((r) => [r.origin_id as string, r.id as string])
-  );
-
-  // Resolve edges against the new node ids; drop any whose endpoints
-  // didn't survive (e.g. referenced participant no longer exists)
-  const edgeRows = pendingEdges
-    .map((e) => {
-      const src = idByOrigin.get(e.src_origin);
-      const dst = idByOrigin.get(e.dst_origin);
-      if (!src || !dst || src === dst) return null;
-      return {
-        trip_id: tripId,
-        src_id: src,
-        dst_id: dst,
-        relation: e.relation,
-        weight: e.weight ?? 1.0,
-        properties: e.properties ?? {},
-      };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
-
-  // Dedupe exact (src,dst,relation) triples
+  const nodeIds = new Set(nodes.map((n) => n.id));
   const seen = new Set<string>();
-  const uniqueEdges = edgeRows.filter((e) => {
-    const key = `${e.src_id}|${e.dst_id}|${e.relation}`;
-    if (seen.has(key)) return false;
+  const edges: InMemoryEdge[] = [];
+  for (const e of pendingEdges) {
+    if (!nodeIds.has(e.src_origin) || !nodeIds.has(e.dst_origin)) continue;
+    if (e.src_origin === e.dst_origin) continue;
+    const key = `${e.src_origin}|${e.dst_origin}|${e.relation}`;
+    if (seen.has(key)) continue;
     seen.add(key);
-    return true;
-  });
-
-  if (uniqueEdges.length > 0) {
-    const { error: edgeErr } = await supabase
-      .from("kg_edges")
-      .insert(uniqueEdges);
-    if (edgeErr) throw new Error(`Edge insert failed: ${edgeErr.message}`);
+    edges.push({
+      id: key,
+      trip_id: tripId,
+      src_id: e.src_origin,
+      dst_id: e.dst_origin,
+      relation: e.relation,
+      weight: e.weight ?? 1.0,
+      confidence: "provisional",
+      properties: e.properties ?? {},
+      source_message_id: null,
+      invalidated_at: null,
+      created_at: now,
+    });
   }
 
-  return { nodeCount: nodeRows.length, edgeCount: uniqueEdges.length };
+  return { nodes, edges };
+}
+
+/**
+ * Best-guess "when did this node come into existence" for the z-axis day
+ * layers. We sample the origin row's created_at where available; otherwise
+ * fall back to the trip start so the node sits on day 0.
+ */
+function tripCreatedAtFor(
+  n: PendingNode,
+  trip: Trip,
+  places: Place[],
+  memory: TripMemory | null
+): string {
+  if (n.origin_table === "trips") return trip.created_at;
+  if (n.origin_table === "places") {
+    const rawId = n.origin_id.startsWith("place:")
+      ? n.origin_id.slice("place:".length)
+      : n.origin_id;
+    const p = places.find((pp) => pp.id === rawId);
+    if (p) return p.created_at;
+  }
+  if (n.origin_table === "participants") return trip.created_at;
+  if (n.origin_table === "trip_memory" && memory) return memory.updated_at;
+  return trip.created_at;
 }

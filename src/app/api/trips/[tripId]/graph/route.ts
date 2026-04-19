@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { computeGraphInMemory } from "@/lib/graph/build";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -10,22 +11,18 @@ export async function GET(
   { params }: { params: { tripId: string } }
 ) {
   const supabase = getSupabaseServerClient();
-  const [{ data: nodes }, { data: edges }] = await Promise.all([
-    supabase
-      .from("kg_nodes")
-      .select("*")
-      .eq("trip_id", params.tripId)
-      .is("invalidated_at", null)
-      .order("importance", { ascending: false }),
-    supabase
-      .from("kg_edges")
-      .select("*")
-      .eq("trip_id", params.tripId)
-      .is("invalidated_at", null),
-  ]);
-
-  return NextResponse.json({
-    nodes: nodes ?? [],
-    edges: edges ?? [],
-  });
+  try {
+    const { nodes, edges } = await computeGraphInMemory(
+      supabase,
+      params.tripId
+    );
+    return NextResponse.json({ nodes, edges });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("graph compute failed:", msg);
+    return NextResponse.json(
+      { nodes: [], edges: [], error: msg },
+      { status: 500 }
+    );
+  }
 }

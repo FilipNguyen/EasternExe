@@ -65,6 +65,24 @@ export function TripBrainGraph({ trip }: { trip: Trip }) {
   const { activations } = useActivations(trip.id);
   const [busy, setBusy] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  // Measure the canvas container so we can hand react-force-graph-3d
+  // explicit width/height — without these it defaults to window size and
+  // the panel renders an off-center sliver of a huge canvas (= black box).
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () =>
+      setSize({ w: el.clientWidth, h: el.clientHeight });
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const fgRef = useRef<{
     cameraPosition: (pos: Record<string, number>) => void;
     d3Force?: (name: string) => { strength?: (n: number) => void } | undefined;
@@ -208,16 +226,32 @@ export function TripBrainGraph({ trip }: { trip: Trip }) {
 
       <Legend />
 
-      <div className="relative min-h-0 flex-1 bg-[radial-gradient(ellipse_at_center,_#0b1020_0%,_#000_100%)]">
-        {loading || nodes.length === 0 ? (
+      <div
+        ref={containerRef}
+        className="relative min-h-0 flex-1 overflow-hidden bg-[radial-gradient(ellipse_at_center,_#0b1020_0%,_#000_100%)]"
+      >
+        {loading ? (
           <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-            {loading ? "Loading graph…" : "Building graph…"}
+            Loading graph…
           </div>
-        ) : (
+        ) : nodes.length === 0 ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-xs text-muted-foreground">
+            <div>No brain yet.</div>
+            <div className="opacity-70">
+              Click <span className="font-medium">Rebuild</span> to derive one
+              from trip data, or <span className="font-medium">Summarize chat</span> to
+              fold in recent messages.
+            </div>
+          </div>
+        ) : size.w === 0 ? null : (
           <ForceGraph3D
             ref={fgRef as never}
+            width={size.w}
+            height={size.h}
             graphData={{ nodes: graphNodes, links: graphLinks }}
             backgroundColor="rgba(0,0,0,0)"
+            onNodeClick={(n: GraphNode) => setSelectedNodeId(n.id)}
+            onBackgroundClick={() => setSelectedNodeId(null)}
             nodeLabel={(n: GraphNode) =>
               `<div style="background:#0f172a;color:white;padding:4px 8px;border-radius:6px;font-size:11px;">
                  <div style="font-weight:600">${escapeHtml(n.label)}</div>
@@ -229,8 +263,9 @@ export function TripBrainGraph({ trip }: { trip: Trip }) {
               const lastHit = latestActivationByNode.get(n.id);
               const since = lastHit ? now - lastHit : Infinity;
               const isHot = since < GLOW_MS;
+              // Pulse every ~300ms while hot (full sin cycle = 2π rad)
               const pulse = isHot
-                ? 1 + 0.35 * Math.sin((since / 120) % (Math.PI * 2))
+                ? 1 + 0.4 * Math.sin((since / 300) * Math.PI * 2)
                 : 1;
               const radius = n.val * pulse;
               const group = new THREE.Group();
@@ -245,16 +280,28 @@ export function TripBrainGraph({ trip }: { trip: Trip }) {
               );
               group.add(sphere);
               if (isHot) {
+                const bloomOpacity = 0.5 * (1 - since / GLOW_MS);
                 const haloMat = new THREE.MeshBasicMaterial({
                   color: new THREE.Color(n.color),
                   transparent: true,
-                  opacity: 0.25 * (1 - since / GLOW_MS),
+                  opacity: bloomOpacity,
                 });
                 const halo = new THREE.Mesh(
-                  new THREE.SphereGeometry(radius * 2.2, 16, 16),
+                  new THREE.SphereGeometry(radius * 3.5, 16, 16),
                   haloMat
                 );
                 group.add(halo);
+                // Outer ring — saturated white-ish for pop
+                const outerMat = new THREE.MeshBasicMaterial({
+                  color: new THREE.Color("#fde68a"),
+                  transparent: true,
+                  opacity: bloomOpacity * 0.35,
+                });
+                const outer = new THREE.Mesh(
+                  new THREE.SphereGeometry(radius * 5, 12, 12),
+                  outerMat
+                );
+                group.add(outer);
               }
               return group;
             }}
@@ -278,6 +325,135 @@ export function TripBrainGraph({ trip }: { trip: Trip }) {
             showNavInfo={false}
           />
         )}
+
+        {selectedNodeId ? (
+          <WikiPanel
+            node={nodes.find((n) => n.id === selectedNodeId)!}
+            allNodes={nodes}
+            allEdges={edges}
+            onClose={() => setSelectedNodeId(null)}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function WikiPanel({
+  node,
+  allNodes,
+  allEdges,
+  onClose,
+}: {
+  node: { id: string; kind: string; label: string; properties: Record<string, unknown>; importance: number };
+  allNodes: { id: string; kind: string; label: string }[];
+  allEdges: { src_id: string; dst_id: string; relation: string }[];
+  onClose: () => void;
+}) {
+  if (!node) return null;
+  const byId = new Map(allNodes.map((n) => [n.id, n]));
+  const outgoing = allEdges.filter((e) => e.src_id === node.id);
+  const incoming = allEdges.filter((e) => e.dst_id === node.id);
+  const color = KIND_COLOR[node.kind] ?? "#94a3b8";
+
+  return (
+    <div className="absolute inset-y-0 right-0 flex w-[320px] flex-col border-l border-white/10 bg-slate-950/95 text-slate-100 shadow-2xl backdrop-blur-sm">
+      <div className="flex items-start justify-between gap-2 border-b border-white/10 px-4 py-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider" style={{ color }}>
+            <span className="inline-block size-1.5 rounded-full" style={{ backgroundColor: color }} />
+            {node.kind}
+          </div>
+          <div className="mt-1 break-words text-base font-semibold leading-snug">
+            {node.label}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="shrink-0 rounded p-1 text-slate-400 hover:bg-white/10 hover:text-white"
+          aria-label="Close"
+        >
+          ✕
+        </button>
+      </div>
+
+      <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3 text-xs">
+        {Object.keys(node.properties ?? {}).length > 0 ? (
+          <section>
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Properties
+            </div>
+            <dl className="space-y-1">
+              {Object.entries(node.properties).map(([k, v]) =>
+                v === null || v === undefined || v === "" ? null : (
+                  <div key={k} className="flex gap-2">
+                    <dt className="w-24 shrink-0 text-slate-500">{k}</dt>
+                    <dd className="flex-1 break-words text-slate-200">
+                      {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                    </dd>
+                  </div>
+                )
+              )}
+            </dl>
+          </section>
+        ) : null}
+
+        {outgoing.length > 0 ? (
+          <section>
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Connects to ({outgoing.length})
+            </div>
+            <ul className="space-y-1">
+              {outgoing.map((e, i) => {
+                const dst = byId.get(e.dst_id);
+                if (!dst) return null;
+                const dstColor = KIND_COLOR[dst.kind] ?? "#94a3b8";
+                return (
+                  <li key={i} className="flex items-start gap-2 rounded bg-white/5 px-2 py-1.5">
+                    <span className="mt-1 inline-block size-1.5 shrink-0 rounded-full" style={{ backgroundColor: dstColor }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[9px] font-mono uppercase tracking-wider text-slate-500">
+                        {e.relation.replace(/_/g, " ").toLowerCase()}
+                      </div>
+                      <div className="break-words text-[11px] text-slate-200">{dst.label}</div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
+
+        {incoming.length > 0 ? (
+          <section>
+            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Referenced by ({incoming.length})
+            </div>
+            <ul className="space-y-1">
+              {incoming.map((e, i) => {
+                const src = byId.get(e.src_id);
+                if (!src) return null;
+                const srcColor = KIND_COLOR[src.kind] ?? "#94a3b8";
+                return (
+                  <li key={i} className="flex items-start gap-2 rounded bg-white/5 px-2 py-1.5">
+                    <span className="mt-1 inline-block size-1.5 shrink-0 rounded-full" style={{ backgroundColor: srcColor }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[9px] font-mono uppercase tracking-wider text-slate-500">
+                        {e.relation.replace(/_/g, " ").toLowerCase()}
+                      </div>
+                      <div className="break-words text-[11px] text-slate-200">{src.label}</div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
+
+        <section className="border-t border-white/5 pt-2 text-[10px] text-slate-500">
+          Importance · {node.importance.toFixed(2)} · id {node.id.slice(0, 32)}
+        </section>
       </div>
     </div>
   );

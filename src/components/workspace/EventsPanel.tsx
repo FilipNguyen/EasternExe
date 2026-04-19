@@ -32,6 +32,8 @@ export function EventsPanel({ trip }: Props) {
             description?: string;
             url?: string;
             category?: string;
+            thumbnail_url?: string;
+            source_host?: string;
           }) => ({
             name: r.name,
             lat: r.lat ?? 0,
@@ -39,6 +41,8 @@ export function EventsPanel({ trip }: Props) {
             summary: r.description,
             url: r.url,
             category: r.category ?? "other",
+            thumbnail_url: r.thumbnail_url,
+            source_host: r.source_host,
           })
         )
       );

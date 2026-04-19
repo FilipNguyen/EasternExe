@@ -4,6 +4,8 @@ export interface BraveSearchResult {
   title: string;
   url: string;
   description: string;
+  thumbnail_url?: string;
+  source_host?: string;
 }
 
 /**
@@ -35,12 +37,22 @@ export async function braveSearch(
       return [];
     }
     const json = (await res.json()) as {
-      web?: { results?: { title: string; url: string; description: string }[] };
+      web?: {
+        results?: {
+          title: string;
+          url: string;
+          description: string;
+          thumbnail?: { src?: string; original?: string };
+          meta_url?: { hostname?: string };
+        }[];
+      };
     };
     return (json.web?.results ?? []).map((r) => ({
       title: r.title,
       url: r.url,
       description: r.description,
+      thumbnail_url: r.thumbnail?.src ?? r.thumbnail?.original,
+      source_host: r.meta_url?.hostname,
     }));
   } catch (e) {
     console.warn("Brave search failed:", e);

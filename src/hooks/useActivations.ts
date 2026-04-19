@@ -5,45 +5,46 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { AgentRunActivation } from "@/lib/graph/types";
 
-const POLL_INTERVAL_MS = 3000;
-const WINDOW_MS = 5 * 60 * 1000; // keep last 5 min of activations in memory
+const WINDOW_MS = 5 * 60 * 1000;
+
+interface BroadcastPayload {
+  trip_id: string;
+  run_id: string;
+  node_ids: string[];
+  reason?: string;
+  at: string;
+}
 
 /**
- * Subscribe to agent_run_activations for a trip. The graph viz uses this
- * to light up nodes that recent agent runs have touched. Realtime + 3s
- * polling fallback, same pattern as useChatMessages / useRealtimePlaces.
+ * Subscribe to ephemeral agent activation events via Supabase Realtime
+ * broadcast (no DB table required). When an @agent turn loads the graph,
+ * the server fans out { trip_id, run_id, node_ids, at } on the channel
+ * `graph-activations:<tripId>`; the graph viz lights those nodes up for
+ * ~1.8s.
  */
 export function useActivations(tripId: string | undefined) {
   const [activations, setActivations] = useState<AgentRunActivation[]>([]);
-  const pollRef = useRef<ReturnType<typeof setInterval>>();
+  const idCounter = useRef(0);
 
-  const merge = useCallback((incoming: AgentRunActivation[]) => {
+  const appendFromPayload = useCallback((p: BroadcastPayload) => {
+    if (!p.node_ids?.length) return;
+    const now = Date.now();
+    const newRows: AgentRunActivation[] = p.node_ids.map((nodeId) => ({
+      id: `local-${++idCounter.current}`,
+      trip_id: p.trip_id,
+      run_id: p.run_id,
+      node_id: nodeId,
+      edge_id: null,
+      reason: p.reason ?? null,
+      activated_at: p.at ?? new Date().toISOString(),
+    }));
     setActivations((prev) => {
-      const byId = new Map(prev.map((a) => [a.id, a]));
-      for (const a of incoming) byId.set(a.id, a);
-      const cutoff = Date.now() - WINDOW_MS;
-      return Array.from(byId.values()).filter(
+      const cutoff = now - WINDOW_MS;
+      return [...prev, ...newRows].filter(
         (a) => new Date(a.activated_at).getTime() >= cutoff
       );
     });
   }, []);
-
-  const fetchRecent = useCallback(async () => {
-    if (!tripId) return;
-    try {
-      const since = new Date(Date.now() - WINDOW_MS).toISOString();
-      const res = await fetch(
-        `/api/activations?trip_id=${tripId}&since=${encodeURIComponent(since)}`,
-        { cache: "no-store" }
-      );
-      const body = (await res.json().catch(() => ({}))) as {
-        activations?: AgentRunActivation[];
-      };
-      if (body.activations) merge(body.activations);
-    } catch (e) {
-      console.error("useActivations fetch failed:", e);
-    }
-  }, [tripId, merge]);
 
   useEffect(() => {
     if (!tripId) {
@@ -51,30 +52,19 @@ export function useActivations(tripId: string | undefined) {
       return;
     }
     const supabase = getSupabaseBrowserClient();
-
-    fetchRecent();
-
     const channel = supabase
-      .channel(`activations:${tripId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "agent_run_activations",
-          filter: `trip_id=eq.${tripId}`,
-        },
-        (payload) => merge([payload.new as AgentRunActivation])
-      )
+      .channel(`graph-activations:${tripId}`, {
+        config: { broadcast: { self: true } },
+      })
+      .on("broadcast", { event: "activate" }, (msg) => {
+        appendFromPayload(msg.payload as BroadcastPayload);
+      })
       .subscribe();
-
-    pollRef.current = setInterval(fetchRecent, POLL_INTERVAL_MS);
 
     return () => {
       supabase.removeChannel(channel);
-      if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [tripId, fetchRecent, merge]);
+  }, [tripId, appendFromPayload]);
 
-  return { activations, refetch: fetchRecent };
+  return { activations };
 }
