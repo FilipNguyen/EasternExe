@@ -16,13 +16,13 @@ export default function LandingPage() {
           Group trip workspace · v0.1
         </span>
         <h1 className="text-5xl font-semibold tracking-tight sm:text-6xl">
-          Quorum
+          EasternExe
         </h1>
         <p className="mt-5 text-lg leading-relaxed text-muted-foreground sm:text-xl">
           The AI workspace for group trips.
         </p>
         <p className="mt-3 max-w-md text-sm leading-relaxed text-muted-foreground">
-          Upload your chat, docs, and voice intros. Quorum reads everything
+          Upload your chat, docs, and voice intros. EasternExe reads everything
           and opens a group chat, a private assistant, and a live map — all
           grounded in what your group actually said.
         </p>

@@ -1,4 +1,4 @@
-# Quorum — Full Build Specification
+# EasternExe — Full Build Specification
 
 **Read this entire document before writing any code. This is the complete source of truth for the build.**
 
@@ -6,7 +6,7 @@
 
 ## 1. Project overview
 
-Quorum is an AI-powered group trip workspace. A group of friends uploads trip-related material (WhatsApp chat export, documents, screenshots, and one short audio intro per person). The app ingests all of it, generates structured per-person profiles + shared trip memory + place pins, and opens a three-surface workspace:
+EasternExe is an AI-powered group trip workspace. A group of friends uploads trip-related material (WhatsApp chat export, documents, screenshots, and one short audio intro per person). The app ingests all of it, generates structured per-person profiles + shared trip memory + place pins, and opens a three-surface workspace:
 
 1. **Group chat** — humans talk normally; the AI is invoked on demand with `@agent`
 2. **Private AI chat** — each participant has their own persistent 1:1 with an AI assistant that knows the full trip context
@@ -77,7 +77,7 @@ Generate a `.env.local.example` file that mirrors this (with empty values) and c
 ## 4. File structure
 
 ```
-quorum/
+easternexe/
 ├── BUILD_SPEC.md                  # this file
 ├── README.md                      # you generate: setup + run instructions
 ├── .env.local                     # operator-supplied, gitignored
@@ -369,7 +369,7 @@ After the migration, the README must instruct the operator to go to Supabase Das
 ### 6.1 `/` — Landing
 
 A minimal centered page:
-- Product name "Quorum"
+- Product name "EasternExe"
 - One-line tagline ("The AI workspace for group trips")
 - Primary button: "Create a trip" → `/setup`
 
@@ -502,7 +502,7 @@ All tools defined in `lib/agent/tools.ts`. Each has a handler that executes serv
 **Group mode** (`lib/prompts/agent-group.ts`):
 
 ```
-You are the Quorum trip assistant for a group of friends planning a trip. You are currently responding INSIDE THE GROUP CHAT — the whole group will see your reply.
+You are the EasternExe trip assistant for a group of friends planning a trip. You are currently responding INSIDE THE GROUP CHAT — the whole group will see your reply.
 
 Be concise. When surfacing options, present 2-3 choices with trade-offs and invite the group to decide. Use participants' names when referencing their preferences. Do not ramble.
 
@@ -524,7 +524,7 @@ When a task needs thorough investigation (researching activities, finding bookin
 **Private mode** (`lib/prompts/agent-private.ts`):
 
 ```
-You are the Quorum trip assistant, responding privately to {participant_name}. Only they will see your reply.
+You are the EasternExe trip assistant, responding privately to {participant_name}. Only they will see your reply.
 
 Their profile:
 {their_profile_json}
@@ -564,7 +564,7 @@ Triggered when the main agent calls `research_activity(description, requester_co
 **Subagent prompt** (`lib/prompts/subagent-research.ts`):
 
 ```
-You are the Quorum Research Agent, a specialist subagent. Your job: thoroughly investigate one specific activity, booking, or question for a trip, then return 2-3 top options with clear reasoning.
+You are the EasternExe Research Agent, a specialist subagent. Your job: thoroughly investigate one specific activity, booking, or question for a trip, then return 2-3 top options with clear reasoning.
 
 Request: {description}
 Requester context: {requester_context}

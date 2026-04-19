@@ -1,4 +1,4 @@
--- Quorum initial schema
+-- EasternExe initial schema
 -- Paste this entire file into the Supabase SQL Editor and Run.
 -- Then: Dashboard → Database → Replication → enable realtime for
 --   chat_messages, places, trips, uploads, participant_profiles, trip_memory

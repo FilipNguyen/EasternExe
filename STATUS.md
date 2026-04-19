@@ -1,4 +1,4 @@
-# Quorum — current state + next-session playbook
+# EasternExe — current state + next-session playbook
 
 _Last updated: 2026-04-18 by Claude Opus 4.7 (1M ctx). Remote: `FilipNguyen/EasternExe` `main` @ `fd72f43`._
 
@@ -10,7 +10,7 @@ If the user says "I ran it" on resume: verify via `curl "$NEXT_PUBLIC_SUPABASE_U
 
 ## One-liner
 
-Quorum is a Z.ai-powered group-trip workspace — group chat, private AI assistant, and a map — grounded in the group's own WhatsApp + notes. Built end-to-end per `BUILD_SPEC.md` and its Z.ai-only adaptation.
+EasternExe is a Z.ai-powered group-trip workspace — group chat, private AI assistant, and a map — grounded in the group's own WhatsApp + notes. Built end-to-end per `BUILD_SPEC.md` and its Z.ai-only adaptation.
 
 ## What's working today (verified 2026-04-18)
 

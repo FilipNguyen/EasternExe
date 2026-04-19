@@ -9,9 +9,9 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Quorum — The AI workspace for group trips",
+  title: "EasternExe — The AI workspace for group trips",
   description:
-    "Upload your WhatsApp chat, docs, and audio intros. Quorum ingests everything and opens a group chat, a private AI assistant, and a live map for your trip.",
+    "Upload your WhatsApp chat, docs, and audio intros. EasternExe ingests everything and opens a group chat, a private AI assistant, and a live map for your trip.",
 };
 
 export default function RootLayout({

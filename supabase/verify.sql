@@ -1,4 +1,4 @@
--- Quorum M2 verification
+-- EasternExe M2 verification
 -- Paste into the Supabase SQL Editor AFTER running 001_init.sql.
 -- Creates a test trip + participant inside a transaction, checks that the
 -- triggers fired, then rolls back so nothing persists.
@@ -40,7 +40,7 @@ begin
   select count(*) into v_bucket_exists
     from storage.buckets where id = 'trip-uploads';
 
-  raise notice '--- Quorum M2 verify ---';
+  raise notice '--- EasternExe M2 verify ---';
   raise notice 'group_rooms        (expect 1): %', v_group_rooms;
   raise notice 'trip_memory_rows   (expect 1): %', v_trip_memory_rows;
   raise notice 'agent_rooms        (expect 1): %', v_agent_rooms;

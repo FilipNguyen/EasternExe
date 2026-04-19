@@ -1,5 +1,5 @@
 /**
- * Quorum database types — hand-mirrored to supabase/migrations/001_init.sql.
+ * EasternExe database types — hand-mirrored to supabase/migrations/001_init.sql.
  * If the schema changes, update these in lockstep.
  */
 

@@ -24,7 +24,7 @@ export function BotAvatar({ state = "idle", size = 28, className }: Props) {
 
   useEffect(() => {
     const avatar = createAvatar(bottts, {
-      seed: "quorum-bot",
+      seed: "easternexe-bot",
       size: 128,
       radius: 50,
     });
@@ -41,7 +41,7 @@ export function BotAvatar({ state = "idle", size = 28, className }: Props) {
       {dataUri ? (
         <img
           src={dataUri}
-          alt="Quorum Bot"
+          alt="EasternExe Bot"
           width={size}
           height={size}
           className="rounded-full"

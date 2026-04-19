@@ -1,4 +1,4 @@
--- Quorum — grant anon + authenticated roles full read on the public schema.
+-- EasternExe — grant anon + authenticated roles full read on the public schema.
 -- Paste into Supabase SQL Editor and Run.
 --
 -- Why this file exists: Supabase's new `sb_publishable_*` / `sb_secret_*`

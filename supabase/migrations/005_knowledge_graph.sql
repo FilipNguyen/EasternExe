@@ -1,4 +1,4 @@
--- Quorum — knowledge graph tables for the "trip brain" viz.
+-- EasternExe — knowledge graph tables for the "trip brain" viz.
 -- Paste into Supabase SQL Editor and Run after 004.
 -- Then: Dashboard → Database → Replication → enable realtime for
 --   kg_nodes, kg_edges, agent_run_activations

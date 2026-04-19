@@ -1,4 +1,4 @@
--- Quorum — live participant locations for the map tab.
+-- EasternExe — live participant locations for the map tab.
 -- Paste into Supabase SQL Editor and Run.
 --
 -- After running: Dashboard → Database → Replication → enable realtime for

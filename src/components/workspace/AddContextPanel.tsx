@@ -196,7 +196,7 @@ export function AddContextPanel({ tripId, onClose }: Props) {
           <div>
             <h2 className="text-base font-semibold">Add context</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Drop files, paste a link, or paste text — Quorum auto-detects
+              Drop files, paste a link, or paste text — EasternExe auto-detects
               the type and pulls places + context into the trip brain.
             </p>
           </div>

@@ -1,11 +1,11 @@
--- Quorum storage policies
+-- EasternExe storage policies
 -- Run AFTER 001_init.sql. Paste into the Supabase SQL Editor and Run.
 --
 -- The `trip-uploads` bucket is private. Without explicit policies, neither the
 -- anon key (browser) nor the service role (server) can insert / read objects
 -- there, which breaks Setup step 5 uploads and the ingestion pipeline.
 --
--- Scope: because the Quorum MVP has no auth, we allow anon + authenticated to
+-- Scope: because the EasternExe MVP has no auth, we allow anon + authenticated to
 -- insert and select within this one bucket. The security boundary is the
 -- unguessable trip_id in the URL (matches the app's overall model per
 -- BUILD_SPEC §5 / RLS-disabled stance).

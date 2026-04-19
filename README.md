@@ -1,8 +1,8 @@
-# Quorum
+# EasternExe
 
 > The AI workspace for group trips.
 
-Upload your WhatsApp chat, docs, and audio intros. Quorum reads everything and opens a group chat, a private AI assistant, and a live map — all grounded in what your group actually said.
+Upload your WhatsApp chat, docs, and audio intros. EasternExe reads everything and opens a group chat, a private AI assistant, and a live map — all grounded in what your group actually said.
 
 The full product + technical spec lives in [`BUILD_SPEC.md`](./BUILD_SPEC.md). Milestone status is tracked inline as the build progresses.
 

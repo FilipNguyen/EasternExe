@@ -157,7 +157,7 @@ export function TripMap({
     const map = mapRef.current?.getMap();
     if (!map) return;
     if (!is3D) return;
-    if (map.getLayer("quorum-3d-buildings")) return;
+    if (map.getLayer("easternexe-3d-buildings")) return;
 
     // Find the first symbol (label) layer so we insert buildings below labels.
     const layers = map.getStyle()?.layers ?? [];
@@ -168,7 +168,7 @@ export function TripMap({
     try {
       map.addLayer(
         {
-          id: "quorum-3d-buildings",
+          id: "easternexe-3d-buildings",
           source: "composite",
           "source-layer": "building",
           filter: ["==", "extrude", "true"],
@@ -263,7 +263,7 @@ export function TripMap({
                   onMouseLeave={scheduleHoverClose}
                 >
                   <span
-                    className="quorum-pulse-ring pointer-events-none absolute inset-0 rounded-full"
+                    className="easternexe-pulse-ring pointer-events-none absolute inset-0 rounded-full"
                     style={{ backgroundColor: color, opacity: 0.5 }}
                     aria-hidden
                   />
@@ -291,9 +291,9 @@ export function TripMap({
                   className="group relative flex flex-col items-center"
                   title={`${p.display_name}${isMe ? " (you)" : ""}`}
                 >
-                  <div className={cn("relative", isMe && "quorum-bob")}>
+                  <div className={cn("relative", isMe && "easternexe-bob")}>
                     <span
-                      className="quorum-pulse-ring-slow pointer-events-none absolute -inset-1 rounded-full"
+                      className="easternexe-pulse-ring-slow pointer-events-none absolute -inset-1 rounded-full"
                       style={{ backgroundColor: p.color, opacity: 0.5 }}
                       aria-hidden
                     />

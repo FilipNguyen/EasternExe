@@ -13,7 +13,7 @@ export interface FetchedUrl {
 }
 
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; QuorumBot/1.0; +https://quorum.app/)";
+  "Mozilla/5.0 (compatible; EasternExeBot/1.0; +https://easternexe.app/)";
 
 export async function fetchUrlText(url: string): Promise<FetchedUrl> {
   const parsed = new URL(url);

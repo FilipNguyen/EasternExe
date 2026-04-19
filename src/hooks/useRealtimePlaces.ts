@@ -7,7 +7,7 @@ import type { Place } from "@/types/db";
 
 const POLL_INTERVAL_MS = 5000;
 
-export const PLACE_SAVED_EVENT = "quorum:place-saved";
+export const PLACE_SAVED_EVENT = "easternexe:place-saved";
 
 export function dispatchPlaceSaved(place: Place) {
   if (typeof window === "undefined") return;

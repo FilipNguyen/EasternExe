@@ -261,7 +261,7 @@ export default function SetupPage() {
     <main className="min-h-dvh bg-background">
       <div className="sticky top-0 z-10 border-b bg-background/80 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-4">
-          <div className="text-sm font-semibold tracking-tight">Quorum</div>
+          <div className="text-sm font-semibold tracking-tight">EasternExe</div>
           <div className="text-xs text-muted-foreground">
             Step {state.step} of 5 · {STEP_LABELS[state.step - 1]}
           </div>
