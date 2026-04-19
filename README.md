@@ -1,3 +1,4 @@
+<img width="1464" height="772" alt="image" src="https://github.com/user-attachments/assets/d2a19606-24f2-4c09-a2c1-da873b6a40b0" />
 # EasternExe
 
 > The AI workspace for group trips.
