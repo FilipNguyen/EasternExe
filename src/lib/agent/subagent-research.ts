@@ -17,6 +17,21 @@ import type { TripMemory } from "@/types/db";
 
 const MAX_TURNS = 5;
 
+const STAGE_MESSAGES: Record<string, string> = {
+  search_places: "Checking out the best spots nearby...",
+  web_search: "Looking for any special events happening...",
+  save_place: "Saving a great find to your map...",
+  query_trip_brain: "Reading your group's travel notes...",
+  get_participant_profile: "Checking everyone's preferences...",
+};
+
+function friendlyStage(toolNames: string[]): string {
+  for (const name of toolNames) {
+    if (STAGE_MESSAGES[name]) return STAGE_MESSAGES[name];
+  }
+  return "Digging deeper...";
+}
+
 export async function runResearchSubagent(args: {
   supabase: SupabaseClient;
   tripId: string;
@@ -25,18 +40,29 @@ export async function runResearchSubagent(args: {
   requesterContext: string;
   destination: string | null;
   tripMemory: TripMemory | null;
+  profilesJson: string;
+  currentTimeOfDay: string;
 }): Promise<string> {
   const t0 = Date.now();
 
-  // 1. Insert the subagent "thinking" placeholder message in the same room
+  const insertStatus = async (content: string) => {
+    await args.supabase.from("chat_messages").insert({
+      room_id: args.roomId,
+      sender_type: "subagent",
+      sender_label: "Research Agent",
+      content,
+      thinking_state: "streaming",
+    });
+  };
+
+  // 1. Insert the subagent "thinking" placeholder message
   const { data: placeholder, error: placeholderErr } = await args.supabase
     .from("chat_messages")
     .insert({
       room_id: args.roomId,
       sender_type: "subagent",
       sender_label: "Research Agent",
-      content:
-        "Looking into this — checking options, pricing, and availability…",
+      content: "Scanning the best spots for you...",
       thinking_state: "thinking",
     })
     .select()
@@ -65,7 +91,6 @@ export async function runResearchSubagent(args: {
       roomId: args.roomId,
       destination: args.destination,
       currentParticipantId: null,
-      // Subagent cannot spawn another subagent
     };
 
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -76,11 +101,25 @@ export async function runResearchSubagent(args: {
           description: args.description,
           requesterContext: args.requesterContext,
           tripMemoryJson: JSON.stringify(args.tripMemory ?? {}, null, 2),
+          profilesJson: args.profilesJson,
+          currentTimeOfDay: args.currentTimeOfDay,
         }),
       },
     ];
 
+    let lastStageInserted = "";
+
     for (let turn = 0; turn < MAX_TURNS; turn++) {
+      const isLastTurn = turn === MAX_TURNS - 1;
+      if (!isLastTurn) {
+        await updateSubagent({
+          content: isLastTurn
+            ? "Putting it all together..."
+            : "Narrowing down the best options...",
+          thinking_state: "streaming",
+        });
+      }
+
       const result = await callLlm({
         messages: messages as unknown as Parameters<typeof callLlm>[0]["messages"],
         tools: subagentResearchTools,
@@ -92,7 +131,11 @@ export async function runResearchSubagent(args: {
       );
 
       if (fnCalls.length === 0) {
-        // Final response
+        // Insert a "putting together" status before the final
+        if (lastStageInserted !== "Putting it all together...") {
+          await insertStatus("Putting it all together...");
+        }
+
         const finalContent =
           result.content.trim() ||
           "I couldn't find enough to recommend with confidence.";
@@ -113,10 +156,17 @@ export async function runResearchSubagent(args: {
         return finalContent;
       }
 
-      // Progress update
+      // Insert a friendly stage message in chat for each tool batch
+      const stageMsg = friendlyStage(fnCalls.map((tc) => tc.function.name));
+      if (stageMsg !== lastStageInserted) {
+        await insertStatus(stageMsg);
+        lastStageInserted = stageMsg;
+      }
+
+      // Update placeholder with tool progress
       const toolNames = fnCalls.map((tc) => tc.function.name).join(", ");
       await updateSubagent({
-        content: `Investigating… (${toolNames})`,
+        content: `Investigating... (${toolNames})`,
         thinking_state: "streaming",
       });
 
@@ -141,6 +191,9 @@ export async function runResearchSubagent(args: {
     }
 
     // Exhausted turn budget
+    if (lastStageInserted !== "Putting it all together...") {
+      await insertStatus("Putting it all together...");
+    }
     const fallback =
       "I've checked a few options but need more time to narrow it down — try asking me something more specific.";
     await updateSubagent({ content: fallback, thinking_state: "done" });

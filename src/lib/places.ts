@@ -86,3 +86,93 @@ export async function geocodeDestination(
   const top = results[0];
   return { lat: top.lat, lng: top.lng };
 }
+
+export interface NearbySearchResult {
+  name: string;
+  place_id: string;
+  lat: number;
+  lng: number;
+  rating?: number;
+  user_ratings_total?: number;
+  primary_type?: string;
+  types?: string[];
+}
+
+const NEARBY_TYPES = [
+  "restaurant",
+  "cafe",
+  "bar",
+  "tourist_attraction",
+  "museum",
+  "shopping_mall",
+  "night_club",
+  "park",
+  "bakery",
+  "meal_takeaway",
+];
+
+export async function googlePlacesNearbySearch(
+  lat: number,
+  lng: number,
+  radius = 1500
+): Promise<NearbySearchResult[]> {
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) return [];
+
+  try {
+    const res = await fetch(
+      "https://places.googleapis.com/v1/places:searchNearby",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "X-Goog-Api-Key": apiKey,
+          "X-Goog-FieldMask":
+            "places.id,places.displayName,places.location,places.rating,places.userRatingCount,places.primaryType,places.types",
+        },
+        body: JSON.stringify({
+          locationRestriction: {
+            circle: {
+              center: { latitude: lat, longitude: lng },
+              radius,
+            },
+          },
+          includedTypes: NEARBY_TYPES,
+          languageCode: "en",
+          maxResultCount: 20,
+        }),
+      }
+    );
+    if (!res.ok) {
+      console.warn(`Nearby Search error ${res.status}:`, await res.text().catch(() => ""));
+      return [];
+    }
+    const json = (await res.json()) as {
+      places?: {
+        id: string;
+        displayName?: { text?: string };
+        location?: { latitude: number; longitude: number };
+        rating?: number;
+        userRatingCount?: number;
+        primaryType?: string;
+        types?: string[];
+      }[];
+    };
+
+    return (json.places ?? [])
+      .filter((p) => p.location)
+      .map((p) => ({
+        name: p.displayName?.text ?? "Unknown",
+        place_id: p.id,
+        lat: p.location!.latitude,
+        lng: p.location!.longitude,
+        rating: p.rating,
+        user_ratings_total: p.userRatingCount,
+        primary_type: p.primaryType,
+        types: p.types,
+      }));
+  } catch (e) {
+    console.warn("Nearby search failed:", e);
+    return [];
+  }
+}

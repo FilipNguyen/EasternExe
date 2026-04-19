@@ -9,6 +9,8 @@ import { TabsShell, type WorkspaceTab } from "@/components/workspace/TabsShell";
 import { IngestProgress } from "@/components/workspace/IngestProgress";
 import { TripBrainPanel } from "@/components/workspace/TripBrainPanel";
 import { TripInfoPanel } from "@/components/workspace/TripInfoPanel";
+import { NearbyPanel } from "@/components/workspace/NearbyPanel";
+import { EventsPanel } from "@/components/workspace/EventsPanel";
 import { TripMap } from "@/components/map/TripMap";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useParticipant } from "@/hooks/useParticipant";
@@ -90,6 +92,10 @@ export function TripWorkspace({
 
   const me = participantId ? participantMap[participantId] : null;
   const isMapTab = tab === "map";
+  const isNearbyTab = tab === "nearby";
+  const isEventsTab = tab === "events";
+  const isPanelTab = isNearbyTab || isEventsTab;
+  const isChatTab = !isMapTab && !isPanelTab;
 
   return (
     <main className="flex h-dvh flex-col bg-background">
@@ -136,13 +142,18 @@ export function TripWorkspace({
         ) : null}
 
         <section className="flex min-h-0 min-w-0 flex-1 flex-col pb-14 sm:pb-0">
-          {!isMapTab ? (
+          {isNearbyTab ? (
+            <NearbyPanel trip={trip} places={places} />
+          ) : isEventsTab ? (
+            <EventsPanel trip={trip} />
+          ) : !isMapTab ? (
             <>
               <MessageList
                 messages={messages}
                 loading={loadingMessages}
                 participants={participantMap}
                 currentParticipantId={participantId}
+                tripId={trip.id}
                 onShareToGroup={tab === "me" ? shareToGroup : undefined}
                 emptyState={
                   tab === "group" ? (
@@ -220,7 +231,7 @@ export function TripWorkspace({
           )}
         </section>
 
-        {!isMapTab ? (
+        {isChatTab ? (
           <aside className="hidden w-80 shrink-0 lg:flex lg:flex-col">
             <TripBrainPanel tripId={trip.id} places={places} />
           </aside>

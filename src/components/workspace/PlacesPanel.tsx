@@ -35,22 +35,22 @@ export function PlacesPanel({ places }: Props) {
 
   return (
     <div className="flex min-h-0 flex-col">
-      <div className="mb-2 flex flex-wrap gap-1 px-1">
-        <CategoryChip
-          label="All"
-          color="#475569"
-          active={filter === "all"}
-          onClick={() => setFilter("all")}
-        />
-        {CATEGORY_ORDER.map((cat) => (
-          <CategoryChip
-            key={cat}
-            label={CATEGORY_LABELS[cat]}
-            color={CATEGORY_COLORS[cat]}
-            active={filter === cat}
-            onClick={() => setFilter(cat)}
-          />
-        ))}
+      <div className="mb-2 px-1">
+        <select
+          value={filter}
+          onChange={(e) =>
+            setFilter(e.target.value as PlaceCategory | "all")
+          }
+          className="w-full rounded-md border border-border bg-background px-2 py-1.5 text-xs font-medium text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+        >
+          <option value="all">All categories</option>
+          {CATEGORY_ORDER.map((cat) => (
+            <option key={cat} value={cat}>
+              {CATEGORY_LABELS[cat]}
+            </option>
+          ))}
+          <option value="other">{CATEGORY_LABELS.other}</option>
+        </select>
       </div>
 
       <ul className="flex flex-col gap-2 pr-1">
@@ -118,36 +118,5 @@ export function PlacesPanel({ places }: Props) {
         </div>
       ) : null}
     </div>
-  );
-}
-
-function CategoryChip({
-  label,
-  color,
-  active,
-  onClick,
-}: {
-  label: string;
-  color: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors ${
-        active
-          ? "border-transparent bg-foreground text-background"
-          : "border-border bg-background text-muted-foreground hover:text-foreground"
-      }`}
-    >
-      <span
-        className="size-1.5 rounded-full"
-        style={{ backgroundColor: color }}
-        aria-hidden
-      />
-      {label}
-    </button>
   );
 }

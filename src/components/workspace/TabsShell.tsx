@@ -1,15 +1,17 @@
 "use client";
 
-import { MessageSquare, User, Map } from "lucide-react";
+import { MessageSquare, User, Map, Compass, Calendar } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-export type WorkspaceTab = "group" | "me" | "map";
+export type WorkspaceTab = "group" | "me" | "map" | "nearby" | "events";
 
 const TABS: { id: WorkspaceTab; label: string; icon: React.ElementType }[] = [
   { id: "group", label: "Group", icon: MessageSquare },
   { id: "me", label: "Me", icon: User },
   { id: "map", label: "Map", icon: Map },
+  { id: "nearby", label: "Nearby", icon: Compass },
+  { id: "events", label: "Events", icon: Calendar },
 ];
 
 interface Props {

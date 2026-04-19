@@ -31,6 +31,14 @@ import type {
 const HISTORY_LIMIT = 20;
 const MAX_TURNS = 5;
 
+function getTimeOfDay(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 11) return "morning";
+  if (hour >= 11 && hour < 17) return "afternoon";
+  if (hour >= 17 && hour < 21) return "evening";
+  return "night";
+}
+
 export interface RunAgentArgs {
   tripId: string;
   roomId: string;
@@ -216,6 +224,9 @@ export async function runAgent(args: RunAgentArgs): Promise<void> {
       { role: "user", content: triggerMsg.content },
     ];
 
+    const currentTimeOfDay = getTimeOfDay();
+    const profilesJson = JSON.stringify(profilesForPrompt, null, 2);
+
     const toolCtx: ToolContext = {
       supabase,
       tripId: args.tripId,
@@ -231,6 +242,8 @@ export async function runAgent(args: RunAgentArgs): Promise<void> {
           requesterContext: subArgs.requesterContext,
           destination: trip.destination,
           tripMemory,
+          profilesJson,
+          currentTimeOfDay,
         });
       },
     };

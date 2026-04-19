@@ -1,9 +1,14 @@
-import { Bot, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Markdown } from "@/components/chat/Markdown";
 import { ThinkingIndicator } from "@/components/chat/ThinkingIndicator";
 import { ShareToGroupButton } from "@/components/chat/ShareToGroupButton";
+import { BotAvatar } from "@/components/chat/BotAvatar";
+import {
+  PlaceResultCard,
+  type PlaceResult,
+} from "@/components/chat/PlaceResultCard";
 import type { Participant } from "@/types/db";
 import type { OptimisticMessage } from "@/hooks/useChatMessages";
 
@@ -11,6 +16,7 @@ interface Props {
   message: OptimisticMessage;
   participants: Record<string, Participant>;
   currentParticipantId: string | null;
+  tripId?: string;
   onShareToGroup?: (messageId: string) => Promise<void>;
 }
 
@@ -34,10 +40,55 @@ function Avatar({
   );
 }
 
+interface ParsedContent {
+  places: PlaceResult[];
+  text: string;
+}
+
+function parsePlacesBlock(content: string): ParsedContent {
+  const marker = ":::places";
+  const startIdx = content.indexOf(marker);
+  if (startIdx === -1) return { places: [], text: content };
+
+  const jsonStart = startIdx + marker.length;
+  const endMarker = ":::";
+  const afterJson = content.indexOf(endMarker, jsonStart);
+  if (afterJson === -1) return { places: [], text: content };
+
+  const jsonStr = content.slice(jsonStart, afterJson).trim();
+  const remaining = content.slice(0, startIdx).trim() + "\n" + content.slice(afterJson + endMarker.length).trim();
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    if (!Array.isArray(parsed)) return { places: [], text: content };
+    const places: PlaceResult[] = parsed
+      .filter(
+        (p: unknown) =>
+          typeof p === "object" &&
+          p !== null &&
+          "name" in p &&
+          "lat" in p &&
+          "lng" in p
+      )
+      .map((p: Record<string, unknown>) => ({
+        name: String(p.name),
+        place_id: p.place_id ? String(p.place_id) : undefined,
+        lat: Number(p.lat),
+        lng: Number(p.lng),
+        category: String(p.category ?? "other"),
+        summary: p.summary ? String(p.summary) : undefined,
+      }));
+    return { places, text: remaining.trim() };
+  } catch {
+    return { places: [], text: content };
+  }
+}
+
 export function MessageBubble({
   message,
   participants,
   currentParticipantId,
+  tripId,
   onShareToGroup,
 }: Props) {
   const canShare =
@@ -57,6 +108,13 @@ export function MessageBubble({
     : undefined;
 
   const shared = !!message.shared_from_room_id;
+
+  // Parse :::places blocks from agent/subagent messages
+  const isBotMessage = isAgent || isSubagent;
+  const { places, text: contentText } =
+    isBotMessage && message.content
+      ? parsePlacesBlock(message.content)
+      : { places: [], text: message.content };
 
   if (isSystem) {
     return (
@@ -79,17 +137,28 @@ export function MessageBubble({
             <Avatar label={sender.display_name} color={sender.color} />
           ) : null}
           {isAgent ? (
-            <Avatar
-              label="A"
-              color="#1f2937"
-              icon={<Bot className="size-3.5" />}
+            <BotAvatar
+              state={
+                message.thinking_state === "thinking"
+                  ? "thinking"
+                  : message.thinking_state === "streaming"
+                    ? "speaking"
+                    : message.thinking_state === "done"
+                      ? "happy"
+                      : "idle"
+              }
             />
           ) : null}
           {isSubagent ? (
-            <Avatar
-              label="R"
-              color="#7c3aed"
-              icon={<Sparkles className="size-3.5" />}
+            <BotAvatar
+              state={
+                message.thinking_state === "thinking"
+                  ? "thinking"
+                  : message.thinking_state === "streaming"
+                    ? "speaking"
+                    : "idle"
+              }
+              size={24}
             />
           ) : null}
         </>
@@ -140,12 +209,26 @@ export function MessageBubble({
           ) : isUser ? (
             <div className="whitespace-pre-wrap">{message.content}</div>
           ) : (
-            <Markdown>{message.content}</Markdown>
+            <Markdown>{contentText || message.content}</Markdown>
           )}
           {message.thinking_state === "streaming" && message.content ? (
             <span className="ml-0.5 inline-block size-1.5 animate-pulse rounded-full bg-current align-middle" />
           ) : null}
         </div>
+
+        {/* Rich place cards from :::places block */}
+        {places.length > 0 && tripId ? (
+          <div className="grid grid-cols-1 gap-2 w-full mt-1">
+            {places.map((place, i) => (
+              <PlaceResultCard
+                key={`${place.name}-${i}`}
+                place={place}
+                tripId={tripId}
+              />
+            ))}
+          </div>
+        ) : null}
+
         {message.failed ? (
           <span className="px-1 text-[10px] text-destructive">
             Failed to send

@@ -14,6 +14,7 @@ interface Props {
   loading?: boolean;
   participants: Record<string, Participant>;
   currentParticipantId: string | null;
+  tripId?: string;
   emptyState?: React.ReactNode;
   onShareToGroup?: (messageId: string) => Promise<void>;
 }
@@ -25,6 +26,7 @@ export function MessageList({
   loading,
   participants,
   currentParticipantId,
+  tripId,
   emptyState,
   onShareToGroup,
 }: Props) {
@@ -77,6 +79,7 @@ export function MessageList({
                 message={m}
                 participants={participants}
                 currentParticipantId={currentParticipantId}
+                tripId={tripId}
                 onShareToGroup={onShareToGroup}
               />
             ))}

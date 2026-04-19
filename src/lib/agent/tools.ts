@@ -374,6 +374,14 @@ async function researchActivityTool(
   if (!ctx.spawnResearchSubagent) {
     return "Research agent unavailable.";
   }
+  // Insert a friendly status message visible in chat before the subagent starts
+  await ctx.supabase.from("chat_messages").insert({
+    room_id: ctx.roomId,
+    sender_type: "agent",
+    sender_label: "Agent",
+    content: "Let me research that for you...",
+    thinking_state: "streaming",
+  });
   return ctx.spawnResearchSubagent({
     description: args.description,
     requesterContext: args.requester_context,
