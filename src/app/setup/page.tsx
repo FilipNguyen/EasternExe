@@ -113,6 +113,8 @@ export default function SetupPage() {
     setStepError(null);
     if (state.step > 1) {
       dispatch({ type: "SET_STEP", step: (state.step - 1) as StepIndex });
+    } else {
+      router.push("/");
     }
   };
 
@@ -325,9 +327,9 @@ export default function SetupPage() {
             type="button"
             variant="ghost"
             onClick={back}
-            disabled={state.step === 1 || submitting}
+            disabled={submitting}
           >
-            <ArrowLeft /> Back
+            <ArrowLeft /> {state.step === 1 ? "Home" : "Back"}
           </Button>
 
           <div className="text-xs text-muted-foreground">

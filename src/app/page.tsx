@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { JoinTripForm } from "@/components/landing/JoinTripForm";
 
 export default function LandingPage() {
   return (
@@ -36,6 +37,8 @@ export default function LandingPage() {
             No sign-up. Your trip lives at its own URL.
           </span>
         </div>
+
+        <JoinTripForm />
       </div>
     </main>
   );
