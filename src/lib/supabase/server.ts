@@ -17,5 +17,11 @@ export function getSupabaseServerClient(): SupabaseClient {
 
   return createClient(url, serviceRole, {
     auth: { autoRefreshToken: false, persistSession: false },
+    global: {
+      // Next.js 14 caches every server-side fetch() by default, including
+      // PostgREST calls made by the Supabase SDK. That was serving stale
+      // trip/upload rows from the snapshot API even after ingest finished.
+      fetch: (input, init) => fetch(input, { ...init, cache: "no-store" }),
+    },
   });
 }
