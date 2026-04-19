@@ -132,24 +132,6 @@ async function extractFromUpload(
 
   if (upload.kind === "whatsapp_zip") {
     const parsed = await parseWhatsAppZip(buf);
-    const mediaUploads: { storage_path: string; filename: string; kind: Upload["kind"] }[] = [];
-
-    for (const media of parsed.mediaFiles) {
-      const path = `${upload.trip_id}/${crypto.randomUUID()}-${media.filename}`;
-      const lower = media.filename.toLowerCase();
-      const kind: Upload["kind"] = lower.match(/\.(jpe?g|png|heic|gif|webp)$/)
-        ? "image"
-        : "other";
-      const { error } = await supabase.storage
-        .from(BUCKET)
-        .upload(path, media.data, {
-          contentType: "application/octet-stream",
-        });
-      if (!error) {
-        mediaUploads.push({ storage_path: path, filename: media.filename, kind });
-      }
-    }
-
     return {
       extracted: [
         {
@@ -159,7 +141,7 @@ async function extractFromUpload(
           text: parsed.text,
         },
       ],
-      mediaUploads,
+      mediaUploads: [],
     };
   }
 
