@@ -172,74 +172,75 @@ async function extractFromUpload(
 // ---------------------------------------------------------------
 
 /**
- * Step 1–3: download uploads, extract text, persist chunks. Returns whether
- * there were any pending uploads to process. Callers use this to decide
- * whether to chain into /profiles or skip to /finalize.
+ * Return ids of uploads that still need extraction for this trip. Includes
+ * both `pending` and stale `processing` rows — the latter are rows where a
+ * prior extract invocation got killed by the Vercel 60s cap mid-await, so
+ * the catch block that would have flipped them to `failed` never ran.
  */
-export async function runExtract(
-  tripId: string
-): Promise<{ hasUploads: boolean }> {
+export async function listPendingUploadIds(tripId: string): Promise<string[]> {
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase
+    .from("uploads")
+    .select("id, created_at")
+    .eq("trip_id", tripId)
+    .in("status", ["pending", "processing"])
+    .order("created_at", { ascending: true });
+  return (data ?? []).map((r) => (r as { id: string }).id);
+}
+
+/**
+ * Extract one upload: download, parse, chunk its text, persist chunks.
+ * Self-contained so it can run inside a single 60s serverless invocation.
+ * Large WhatsApp zips took ~all of one 60s budget on their own, which
+ * starved subsequent uploads (notes rows pinned at `processing` forever).
+ */
+export async function runExtractOne(
+  tripId: string,
+  uploadId: string
+): Promise<void> {
   const supabase = getSupabaseServerClient();
 
-  const { data: uploadsData } = await supabase
+  const { data: uploadData, error: uploadErr } = await supabase
     .from("uploads")
     .select("*")
-    .eq("trip_id", tripId)
-    .eq("status", "pending");
-  const uploads = (uploadsData ?? []) as Upload[];
+    .eq("id", uploadId)
+    .single();
+  if (uploadErr || !uploadData)
+    throw new Error(`Upload ${uploadId} not found`);
+  const upload = uploadData as Upload;
 
-  if (uploads.length === 0) {
-    return { hasUploads: false };
-  }
+  await setUploadStatus(supabase, upload.id, "processing");
 
-  const extractedTexts: ExtractedText[] = [];
+  try {
+    const result = await extractFromUpload(supabase, upload);
 
-  for (const upload of uploads) {
-    await setUploadStatus(supabase, upload.id, "processing");
-    try {
-      const result = await extractFromUpload(supabase, upload);
-      extractedTexts.push(...result.extracted);
-
-      for (const media of result.mediaUploads) {
-        await supabase.from("uploads").insert({
-          trip_id: upload.trip_id,
-          participant_id: upload.participant_id,
-          kind: media.kind,
-          storage_path: media.storage_path,
-          filename: media.filename,
-          status: "processed",
-        });
-      }
-
-      await setUploadStatus(supabase, upload.id, "processed");
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      console.error(`Upload ${upload.id} failed:`, msg);
-      await setUploadStatus(supabase, upload.id, "failed", msg);
-    }
-  }
-
-  const allChunkRows: {
-    upload_id: string;
-    trip_id: string;
-    content: string;
-  }[] = [];
-
-  for (const ex of extractedTexts) {
-    if (!ex.text.trim()) continue;
-    const pieces = chunkText(ex.text);
-    for (const piece of pieces) {
-      allChunkRows.push({
-        upload_id: ex.uploadId,
-        trip_id: tripId,
-        content: piece,
+    for (const media of result.mediaUploads) {
+      await supabase.from("uploads").insert({
+        trip_id: upload.trip_id,
+        participant_id: upload.participant_id,
+        kind: media.kind,
+        storage_path: media.storage_path,
+        filename: media.filename,
+        status: "processed",
       });
     }
-  }
 
-  if (allChunkRows.length > 0) {
-    for (let i = 0; i < allChunkRows.length; i += 100) {
-      const batch = allChunkRows.slice(i, i + 100);
+    const chunkRows: { upload_id: string; trip_id: string; content: string }[] =
+      [];
+    for (const ex of result.extracted) {
+      if (!ex.text.trim()) continue;
+      const pieces = chunkText(ex.text);
+      for (const piece of pieces) {
+        chunkRows.push({
+          upload_id: ex.uploadId,
+          trip_id: tripId,
+          content: piece,
+        });
+      }
+    }
+
+    for (let i = 0; i < chunkRows.length; i += 100) {
+      const batch = chunkRows.slice(i, i + 100);
       const { error: insertErr } = await supabase
         .from("upload_chunks")
         .insert(batch);
@@ -247,8 +248,38 @@ export async function runExtract(
         console.warn("chunk insert failed:", insertErr.message);
       }
     }
-  }
 
+    await setUploadStatus(supabase, upload.id, "processed");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`Upload ${upload.id} failed:`, msg);
+    await setUploadStatus(supabase, upload.id, "failed", msg);
+  }
+}
+
+/** True if the trip has any chunks — decides whether to run profiles/memory/places or skip. */
+export async function tripHasChunks(tripId: string): Promise<boolean> {
+  const supabase = getSupabaseServerClient();
+  const { count } = await supabase
+    .from("upload_chunks")
+    .select("id", { count: "exact", head: true })
+    .eq("trip_id", tripId);
+  return (count ?? 0) > 0;
+}
+
+/**
+ * Legacy loop kept for `runIngestion` (local-dev seed path). The chained
+ * endpoints under src/app/api/ingest/[tripId]/extract now use
+ * `listPendingUploadIds` + `runExtractOne` one-per-hop instead.
+ */
+export async function runExtract(
+  tripId: string
+): Promise<{ hasUploads: boolean }> {
+  const ids = await listPendingUploadIds(tripId);
+  if (ids.length === 0) return { hasUploads: false };
+  for (const id of ids) {
+    await runExtractOne(tripId, id);
+  }
   return { hasUploads: true };
 }
 
