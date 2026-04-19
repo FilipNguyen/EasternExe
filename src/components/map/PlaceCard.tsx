@@ -62,8 +62,10 @@ export function PlaceCard({
     let active = true;
     (async () => {
       try {
+        // no-store so we don't lock in a stale 404 from before a backfill;
+        // server already sets 1h cache-control which is enough.
         const res = await fetch(`/api/places/${place.id}/details`, {
-          cache: "force-cache",
+          cache: "no-store",
         });
         if (!res.ok) return;
         const body = (await res.json()) as { details: Details | null };

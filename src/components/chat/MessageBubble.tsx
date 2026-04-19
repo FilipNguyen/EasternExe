@@ -109,12 +109,14 @@ export function MessageBubble({
 
   const shared = !!message.shared_from_room_id;
 
-  // Parse :::places blocks from agent/subagent messages
+  // Parse :::places blocks from agent/subagent messages AND shared messages
+  // (which are re-inserted as sender_type='user' but carry the original bot
+  // content — they should still render rich cards + markdown).
   const isBotMessage = isAgent || isSubagent;
-  const { places, text: contentText } =
-    isBotMessage && message.content
-      ? parsePlacesBlock(message.content)
-      : { places: [], text: message.content };
+  const shouldParseContent = (isBotMessage || shared) && !!message.content;
+  const { places, text: contentText } = shouldParseContent
+    ? parsePlacesBlock(message.content)
+    : { places: [], text: message.content };
 
   if (isSystem) {
     return (
@@ -206,7 +208,7 @@ export function MessageBubble({
         >
           {message.thinking_state === "thinking" && !message.content ? (
             <ThinkingIndicator />
-          ) : isUser ? (
+          ) : isUser && !shared ? (
             <div className="whitespace-pre-wrap">{message.content}</div>
           ) : (
             <Markdown>{contentText || message.content}</Markdown>
