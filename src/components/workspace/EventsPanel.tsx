@@ -23,6 +23,14 @@ export function EventsPanel({ trip }: Props) {
       const res = await fetch(`/api/events/scan?trip_id=${trip.id}`);
       if (!res.ok) throw new Error("Scan failed");
       const data = await res.json();
+      // Brave event results fall into two buckets: actual venue hits (have
+      // lat/lng) and editorial "things to do in April" articles (have no
+      // location). Previously we coerced missing coords to (0,0) — which
+      // meant hitting "Add to map" saved a pin at Null Island off Africa.
+      // Fall back to the trip destination so the pin at least lands in the
+      // right city; the user can reposition or remove if needed.
+      const fallbackLat = trip.destination_lat ?? 0;
+      const fallbackLng = trip.destination_lng ?? 0;
       setResults(
         (data.results ?? []).map(
           (r: {
@@ -36,8 +44,8 @@ export function EventsPanel({ trip }: Props) {
             source_host?: string;
           }) => ({
             name: r.name,
-            lat: r.lat ?? 0,
-            lng: r.lng ?? 0,
+            lat: r.lat ?? fallbackLat,
+            lng: r.lng ?? fallbackLng,
             summary: r.description,
             url: r.url,
             category: r.category ?? "other",
