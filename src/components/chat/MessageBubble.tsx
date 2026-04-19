@@ -91,16 +91,28 @@ export function MessageBubble({
   tripId,
   onShareToGroup,
 }: Props) {
-  const canShare =
-    !!onShareToGroup &&
-    (message.sender_type === "agent" || message.sender_type === "subagent") &&
-    message.thinking_state !== "thinking" &&
-    !!message.content;
   const isUser = message.sender_type === "user";
   const isAgent = message.sender_type === "agent";
   const isSubagent = message.sender_type === "subagent";
   const isSystem = message.sender_type === "system";
   const shared = !!message.shared_from_room_id;
+
+  // If a placeholder row has been "thinking/streaming" longer than 90s the
+  // Vercel serverless that was writing it almost certainly hit the 60s cap
+  // and was killed — so the row will never transition. Treat it as failed
+  // on the client (no DB write) instead of showing forever-working state.
+  const effectiveState =
+    (message.thinking_state === "thinking" ||
+      message.thinking_state === "streaming") &&
+    Date.now() - new Date(message.created_at).getTime() > 90_000
+      ? "failed"
+      : message.thinking_state;
+
+  const canShare =
+    !!onShareToGroup &&
+    (message.sender_type === "agent" || message.sender_type === "subagent") &&
+    effectiveState !== "thinking" &&
+    !!message.content;
   // Shared messages carry the original bot content — lay them out like a bot
   // reply (left, with a sparkle avatar) instead of a right-side "mine" bubble.
   const mine =
@@ -144,11 +156,11 @@ export function MessageBubble({
           {isAgent ? (
             <BotAvatar
               state={
-                message.thinking_state === "thinking"
+                effectiveState === "thinking"
                   ? "thinking"
-                  : message.thinking_state === "streaming"
+                  : effectiveState === "streaming"
                     ? "speaking"
-                    : message.thinking_state === "done"
+                    : effectiveState === "done"
                       ? "happy"
                       : "idle"
               }
@@ -157,9 +169,9 @@ export function MessageBubble({
           {isSubagent ? (
             <BotAvatar
               state={
-                message.thinking_state === "thinking"
+                effectiveState === "thinking"
                   ? "thinking"
-                  : message.thinking_state === "streaming"
+                  : effectiveState === "streaming"
                     ? "speaking"
                     : "idle"
               }
@@ -208,19 +220,19 @@ export function MessageBubble({
                     : "bg-secondary text-secondary-foreground",
             message.optimistic ? "opacity-50" : "opacity-100",
             message.failed ? "border border-destructive" : "",
-            message.thinking_state === "failed"
+            effectiveState === "failed"
               ? "border border-destructive bg-destructive/10 text-destructive"
               : ""
           )}
         >
-          {message.thinking_state === "thinking" && !message.content ? (
+          {effectiveState === "thinking" && !message.content ? (
             <ThinkingIndicator />
           ) : isUser && !shared ? (
             <div className="whitespace-pre-wrap">{message.content}</div>
           ) : (
             <Markdown>{contentText || message.content}</Markdown>
           )}
-          {message.thinking_state === "streaming" && message.content ? (
+          {effectiveState === "streaming" && message.content ? (
             <span className="ml-0.5 inline-block size-1.5 animate-pulse rounded-full bg-current align-middle" />
           ) : null}
         </div>

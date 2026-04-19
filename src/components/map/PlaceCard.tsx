@@ -21,6 +21,8 @@ interface Details {
   priceLevel?: string;
   primaryTypeDisplayName?: { text?: string };
   editorialSummary?: { text?: string };
+  generativeSummary?: { overview?: { text?: string } };
+  reviews?: Array<{ text?: { text?: string }; rating?: number }>;
   regularOpeningHours?: { openNow?: boolean };
   googleMapsUri?: string;
 }
@@ -86,7 +88,33 @@ export function PlaceCard({
   const subtitle =
     details?.primaryTypeDisplayName?.text ??
     (place.category ? CATEGORY_LABELS[place.category] : null);
-  const summary = details?.editorialSummary?.text ?? place.notes ?? null;
+
+  // Description priority: (1) Google's own generative overview, (2) editorial
+  // blurb, (3) the first public review snippet, (4) whatever was ingested
+  // into `notes` from the group's materials, (5) a synthesized "Rated 4.0★
+  // Japanese cafe" fallback so the card never shows a bare title.
+  const firstReview = details?.reviews?.[0]?.text?.text;
+  const trimReview = (s: string) => {
+    const clean = s.replace(/\s+/g, " ").trim();
+    const firstSentence = clean.match(/^.{20,200}?[.!?](?=\s|$)/);
+    return (firstSentence?.[0] ?? clean).slice(0, 220);
+  };
+  const generativeSummary = details?.generativeSummary?.overview?.text;
+  const synthFallback =
+    subtitle && details?.rating
+      ? `${subtitle} · ${details.rating.toFixed(1)}★ on Google${
+          details.userRatingCount
+            ? ` (${details.userRatingCount.toLocaleString()} reviews)`
+            : ""
+        }.`
+      : null;
+  const summary =
+    generativeSummary ??
+    details?.editorialSummary?.text ??
+    (firstReview ? trimReview(firstReview) : null) ??
+    place.notes ??
+    synthFallback ??
+    null;
 
   return (
     <div

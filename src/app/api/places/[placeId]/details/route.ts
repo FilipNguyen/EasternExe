@@ -24,6 +24,8 @@ interface PlaceDetails {
     | "PRICE_LEVEL_VERY_EXPENSIVE";
   primaryTypeDisplayName?: { text?: string };
   editorialSummary?: { text?: string };
+  generativeSummary?: { overview?: { text?: string } };
+  reviews?: Array<{ text?: { text?: string }; rating?: number }>;
   regularOpeningHours?: {
     openNow?: boolean;
     weekdayDescriptions?: string[];
@@ -67,7 +69,7 @@ export async function GET(
       headers: {
         "X-Goog-Api-Key": key,
         "X-Goog-FieldMask":
-          "displayName,photos,rating,userRatingCount,priceLevel,primaryTypeDisplayName,editorialSummary,regularOpeningHours,websiteUri,googleMapsUri",
+          "displayName,photos,rating,userRatingCount,priceLevel,primaryTypeDisplayName,editorialSummary,generativeSummary,reviews.text,reviews.rating,regularOpeningHours,websiteUri,googleMapsUri",
       },
     }
   );

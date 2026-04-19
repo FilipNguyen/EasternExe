@@ -29,14 +29,23 @@ const TOOL_LABELS: Record<string, string> = {
   web_search: "Searching the web",
 };
 
+// Vercel Hobby caps serverless at 60s. When runAgent blows the budget the
+// process is killed mid-stream, the try/catch never fires, and the placeholder
+// row stays in `streaming` forever — which is why "Agent working…" was visible
+// on a room where nothing had been prompted. We treat any row older than this
+// as dead on the client, regardless of DB state.
+const STALE_MS = 90_000;
+
 export function AgentActivityPanel({ messages }: Props) {
-  // Find latest agent message that's thinking/streaming.
+  // Find latest agent message that's thinking/streaming AND recent.
+  const now = Date.now();
   const active = [...messages]
     .reverse()
     .find(
       (m) =>
         m.sender_type === "agent" &&
-        (m.thinking_state === "thinking" || m.thinking_state === "streaming")
+        (m.thinking_state === "thinking" || m.thinking_state === "streaming") &&
+        now - new Date(m.created_at).getTime() < STALE_MS
     );
 
   if (!active) return null;
